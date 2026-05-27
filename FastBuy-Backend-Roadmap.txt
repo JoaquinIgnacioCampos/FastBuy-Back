@@ -1,0 +1,100 @@
+# FastBuy Backend — Development Roadmap
+
+## Context
+The frontend already has a service layer (`src/services/`) that switches between demo mode and real API mode based on the `VITE_API_URL` env var. When the variable is set, real HTTP calls are made to the backend. Without it, all data comes from hardcoded files. The backend is currently an empty Spring Boot scaffold — no entities, controllers, or services exist yet.
+
+---
+
+## Endpoints the Frontend Already Calls
+
+These are in `src/services/api.js` and used only by `BartenderScreen.jsx`:
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/orders?bar={barId}` | Fetch all orders for a bar (status: `queue`/`preparing`/`ready`) |
+| POST | `/orders/{id}/advance` | Advance order status: queue → preparing → ready |
+| POST | `/orders/{id}/deliver` | Mark order as delivered (final state) |
+
+**Order shape expected by frontend** (from `src/services/demo.js`):
+```json
+{
+  "id": "FB35",
+  "total": 9000,
+  "items": [{ "pid": "p1", "q": 2 }, { "pid": "p11", "q": 1 }],
+  "status": "queue",
+  "bar": "north",
+  "time": "2:14"
+}
+```
+
+---
+
+## Data Currently Hardcoded in the Frontend
+
+Everything in `src/data.js` needs a backend endpoint eventually. None of these are fetched yet.
+
+| Entity | File | Shape |
+|--------|------|-------|
+| **Products** (13 items) | `src/data.js` → `PRODUCTS` | `{ id, name, category, price, stock }` |
+| **Bars** (3 items) | `src/data.js` → `BARS` | `{ id, label, location }` |
+| **Categories** (4 items) | `src/data.js` → `CATEGORIES` | `{ id, label, emoji }` |
+| **Event** (1 item) | `src/data.js` → `EVENT` | `{ name, venue, hours }` |
+| **Payment methods** | `PaymentScreen.jsx` | Not a backend concern yet |
+| **Bartender code** | `WelcomeScreen.jsx` → `'00000000'` | Auth concern (future) |
+| **Queue position/wait** | `QueueScreen.jsx` | Computed from orders |
+
+---
+
+## Recommended Build Order
+
+### Phase 1 — Bartender flow (minimum viable backend)
+Completing this phase makes `BartenderScreen` work with real data.
+
+1. Configure `application.properties` — DB connection (MSSQL or H2 for local dev)
+2. `Order` entity: `id` (String), `total`, `status` (enum: QUEUE/PREPARING/READY/DELIVERED), `bar`, `time`, `items`
+3. `OrderRepository` — JpaRepository
+4. `OrderService` — state machine for `advanceOrder` and `markDelivered`
+5. `OrderController`:
+   - `GET /orders?bar={barId}`
+   - `POST /orders/{id}/advance`
+   - `POST /orders/{id}/deliver`
+6. CORS config — allow `http://localhost:5173` and the ngrok domain
+
+### Phase 2 — Order creation (complete the customer flow)
+7. `POST /orders` — accepts cart + barId, persists order, returns order ID
+8. Update `src/services/api.js` to call `POST /orders` on checkout
+
+### Phase 3 — Replace hardcoded data.js
+9. `Product`, `Bar`, `Category`, `Event` entities + repositories
+10. Seed data matching current `data.js` content
+11. `GET /products`, `GET /bars`, `GET /categories`, `GET /events`
+12. Update frontend `src/data.js` to fetch from API
+
+---
+
+## Frontend Wiring
+
+`package.json` has: `"dev:backend": "vite --mode backend"`
+
+Vite's mode system loads `.env.backend` — **this file has now been created** at `FastBuy-Front/.env.backend`:
+```
+VITE_API_URL=http://localhost:8080
+```
+
+- `npm run dev:backend` → real backend mode (calls localhost:8080)
+- `npm run dev` → demo mode (hardcoded data, no backend needed)
+
+---
+
+## CORS (critical for Phase 1)
+Allow `http://localhost:5173` and `https://crepe-phonics-slogan.ngrok-free.dev`.  
+Use `@CrossOrigin` on the controller or a global `WebMvcConfigurer` bean.
+
+---
+
+## Verification
+1. Start backend on port 8080
+2. Run `npm run dev:backend` in FastBuy-Front
+3. Enter bartender code → select bar → BartenderScreen should show real orders from DB
+4. Advance an order → DB status should change
+5. `npm run dev` (no backend) → demo mode still works
