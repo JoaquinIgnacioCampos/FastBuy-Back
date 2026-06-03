@@ -86,13 +86,19 @@ public class PaymentsService {
             throw new IllegalStateException("Empty response from Mercado Pago");
         }
 
-        String initPoint = stringOrNull(resp.get("init_point"));
-        log.info("MP preference created: id={} init_point={}", resp.get("id"), initPoint);
+        String initPoint        = stringOrNull(resp.get("init_point"));
+        String sandboxInitPoint = stringOrNull(resp.get("sandbox_init_point"));
+
+        // Test tokens (TEST-…) must use sandbox_init_point; production tokens use init_point.
+        boolean isTestToken = token.startsWith("TEST-");
+        String checkoutUrl  = isTestToken ? sandboxInitPoint : initPoint;
+
+        log.info("MP preference created: id={} sandbox={} url={}", resp.get("id"), isTestToken, checkoutUrl);
 
         return PreferenceResponse.real(
                 stringOrNull(resp.get("id")),
-                initPoint,
-                stringOrNull(resp.get("sandbox_init_point"))
+                checkoutUrl,
+                sandboxInitPoint
         );
     }
 
