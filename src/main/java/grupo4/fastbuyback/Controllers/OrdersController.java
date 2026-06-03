@@ -22,7 +22,12 @@ public class OrdersController {
     // Phase 1 — Bartender flow
 
     @GetMapping
-    public List<OrderResponse> getOrders(@RequestParam String bar) {
+    public List<OrderResponse> getOrders(
+            @RequestParam String bar,
+            @RequestParam(required = false) String status) {
+        if ("delivered".equalsIgnoreCase(status)) {
+            return service.getDeliveredByBar(bar);
+        }
         return service.getOrdersByBar(bar);
     }
 

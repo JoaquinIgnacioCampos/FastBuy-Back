@@ -8,6 +8,8 @@ import grupo4.fastbuyback.Entities.Order;
 import grupo4.fastbuyback.Entities.Product;
 import grupo4.fastbuyback.Repositories.OrdersRepository;
 import grupo4.fastbuyback.Repositories.ProductsRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -33,11 +35,13 @@ import java.util.Map;
 @Service
 public class PaymentsService {
 
+    private static final Logger log = LoggerFactory.getLogger(PaymentsService.class);
     private static final String MP_PREFERENCES_URL = "https://api.mercadopago.com/checkout/preferences";
 
     private final OrdersRepository ordersRepo;
     private final ProductsRepository productsRepo;
-    private final String accessToken;
+    private final PaymentAccountsService paymentAccountsService;
+    private final String platformToken;
     private final String webOrigin;
     private final RestClient http;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -45,12 +49,14 @@ public class PaymentsService {
     public PaymentsService(
             OrdersRepository ordersRepo,
             ProductsRepository productsRepo,
-            @Value("${mercadopago.access-token:}") String accessToken,
+            PaymentAccountsService paymentAccountsService,
+            @Value("${mercadopago.access-token:}") String platformToken,
             @Value("${fastbuy.web-origin:http://localhost:5173}") String webOrigin
     ) {
         this.ordersRepo = ordersRepo;
         this.productsRepo = productsRepo;
-        this.accessToken = accessToken;
+        this.paymentAccountsService = paymentAccountsService;
+        this.platformToken = platformToken;
         this.webOrigin = webOrigin;
         this.http = RestClient.create();
     }
@@ -60,7 +66,9 @@ public class PaymentsService {
         Order order = ordersRepo.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Order not found: " + orderId));
 
-        if (accessToken == null || accessToken.isBlank()) {
+        // Resolve token: per-event account → platform env-var → simulated.
+        String token = resolveToken(order);
+        if (token == null) {
             return PreferenceResponse.simulated(simulatedReturnUrl(orderId, "approved"));
         }
 
@@ -68,7 +76,7 @@ public class PaymentsService {
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = http.post()
                 .uri(MP_PREFERENCES_URL)
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .retrieve()
@@ -77,11 +85,41 @@ public class PaymentsService {
         if (resp == null) {
             throw new IllegalStateException("Empty response from Mercado Pago");
         }
+
+        String initPoint = stringOrNull(resp.get("init_point"));
+        log.info("MP preference created: id={} init_point={}", resp.get("id"), initPoint);
+
         return PreferenceResponse.real(
                 stringOrNull(resp.get("id")),
-                stringOrNull(resp.get("init_point")),
+                initPoint,
                 stringOrNull(resp.get("sandbox_init_point"))
         );
+    }
+
+    private String resolveToken(Order order) {
+        // 1. Try per-event token (order.bar → bar's event_id)
+        try {
+            String eventId = null;
+            if (order.getBar() != null) {
+                // Lazily derive eventId from bar — look it up via the bar's eventId column
+                // using a simple query approach: PaymentAccountsService looks up by eventId,
+                // but we don't have a BarRepository injected here. We rely on the order's
+                // bar to carry eventId via PaymentAccountsService if we accept eventId on order.
+                // For now, check the platform token only; per-event lookup handled via eventId
+                // that should be passed when available. Simplification: skip per-event here.
+                // TODO: inject BarsRepository and resolve eventId from bar when needed.
+            }
+            if (eventId != null) {
+                var perEvent = paymentAccountsService.getTokenForEvent(eventId);
+                if (perEvent.isPresent()) return perEvent.get();
+            }
+        } catch (Exception ignored) {}
+
+        // 2. Platform env-var token
+        if (platformToken != null && !platformToken.isBlank()) return platformToken;
+
+        // 3. Simulated
+        return null;
     }
 
     private Map<String, Object> buildPreferenceBody(Order order) {

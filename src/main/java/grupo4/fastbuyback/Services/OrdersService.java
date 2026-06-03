@@ -46,6 +46,13 @@ public class OrdersService {
                    .toList();
     }
 
+    public List<OrderResponse> getDeliveredByBar(String barId) {
+        return repo.findTop50ByBarAndStatusOrderByIdDesc(barId, OrderState.DELIVERED)
+                   .stream()
+                   .map(this::toResponse)
+                   .toList();
+    }
+
     public OrderResponse advanceOrder(Long id) {
         Order order = repo.findById(id)
             .orElseThrow(() -> new IllegalArgumentException("Order not found: " + id));
@@ -77,7 +84,7 @@ public class OrdersService {
     public OrderResponse createOrder(CreateOrderRequest req) {
         try {
             String barId = (req.bar() == null || req.bar().isBlank())
-                    ? pickLeastLoadedBar(req.items())
+                    ? pickLeastLoadedBar(req.items(), req.eventId())
                     : req.bar();
 
             Order order = new Order();
@@ -102,10 +109,12 @@ public class OrdersService {
      *      (or throws if the DB has no bars at all).
      * Load = sum of item quantities across QUEUE+PREPARING orders for that bar.
      */
-    private String pickLeastLoadedBar(List<ItemDto> items) {
+    private String pickLeastLoadedBar(List<ItemDto> items, String eventId) {
         Set<String> wanted = items.stream().map(ItemDto::pid).collect(Collectors.toSet());
 
-        List<Bar> bars = barsRepo.findAll();
+        List<Bar> bars = (eventId != null && !eventId.isBlank())
+                ? barsRepo.findByEventId(eventId)
+                : barsRepo.findAll();
         if (bars.isEmpty()) {
             throw new IllegalStateException("No bars are configured");
         }

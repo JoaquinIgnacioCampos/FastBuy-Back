@@ -11,5 +11,6 @@ import java.util.List;
 public record CreateOrderRequest(
         @NotEmpty List<ItemDto> items,
         String bar,
-        double total
+        double total,
+        String eventId
 ) {}

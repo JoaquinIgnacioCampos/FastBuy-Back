@@ -14,10 +14,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
- * Read-only integration tests for the static data endpoints:
- * /products, /bars, /categories, /events.
+ * Read-only integration tests for the static data endpoints.
  *
- * No @AfterEach cleanup needed — these tests never modify state.
+ * Products: p1–p15 (Eclipse), p16–p23 (Cumbiero), p_test = 24 total
+ * Bars: eclipse-north, eclipse-center, eclipse-south, cumbia-main, cumbia-vip = 5 total
+ * Events visible: e1 (live), e2 (live), e3 (upcoming), e4 (recently finished, within 6h grace), e5 (far future)
  */
 @SpringBootTest
 class DataEndpointsTest {
@@ -37,10 +38,10 @@ class DataEndpointsTest {
     // ── /products ─────────────────────────────────────────────────────────────
 
     @Test
-    void getProducts_returns15Items() throws Exception {
+    void getProducts_returns24Items() throws Exception {
         mockMvc.perform(get("/products"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(15)));
+                .andExpect(jsonPath("$", hasSize(24)));
     }
 
     @Test
@@ -57,10 +58,17 @@ class DataEndpointsTest {
     }
 
     @Test
-    void getProducts_containsKnownItems() throws Exception {
+    void getProducts_containsEclipseItems() throws Exception {
         mockMvc.perform(get("/products"))
                 .andExpect(jsonPath("$[?(@.id == 'p1')].name", hasItem("Carlsberg 500ml")))
                 .andExpect(jsonPath("$[?(@.id == 'p11')].name", hasItem("Chorizo a la parrilla")));
+    }
+
+    @Test
+    void getProducts_containsCumbieroItems() throws Exception {
+        mockMvc.perform(get("/products"))
+                .andExpect(jsonPath("$[?(@.id == 'p16')].name", hasItem("Fernet con Coca")))
+                .andExpect(jsonPath("$[?(@.id == 'p21')].name", hasItem("Provoleta a la parrilla")));
     }
 
     @Test
@@ -79,10 +87,10 @@ class DataEndpointsTest {
     // ── /bars ─────────────────────────────────────────────────────────────────
 
     @Test
-    void getBars_returns3Items() throws Exception {
+    void getBars_returns5Items() throws Exception {
         mockMvc.perform(get("/bars"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(3)));
+                .andExpect(jsonPath("$", hasSize(5)));
     }
 
     @Test
@@ -90,22 +98,67 @@ class DataEndpointsTest {
         mockMvc.perform(get("/bars"))
                 .andExpect(jsonPath("$[0].id", notNullValue()))
                 .andExpect(jsonPath("$[0].label", notNullValue()))
-                .andExpect(jsonPath("$[0].location", notNullValue()));
+                .andExpect(jsonPath("$[0].location", notNullValue()))
+                .andExpect(jsonPath("$[0].eventId", notNullValue()));
     }
 
     @Test
-    void getBars_containsKnownBars() throws Exception {
+    void getBars_containsBothEventBars() throws Exception {
         mockMvc.perform(get("/bars"))
-                .andExpect(jsonPath("$[?(@.id == 'north')].label", hasItem("Barra Norte")))
-                .andExpect(jsonPath("$[?(@.id == 'south')].label", hasItem("Barra Sur")));
+                .andExpect(jsonPath("$[*].id", hasItem("eclipse-north")))
+                .andExpect(jsonPath("$[*].id", hasItem("cumbia-main")));
+    }
+
+    // ── /events/{id}/bars ─────────────────────────────────────────────────────
+
+    @Test
+    void getEventBars_eclipse_returns3Bars() throws Exception {
+        mockMvc.perform(get("/events/e1/bars"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(3)));
+    }
+
+    @Test
+    void getEventBars_cumbiero_returns2Bars() throws Exception {
+        mockMvc.perform(get("/events/e2/bars"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)));
+    }
+
+    // ── /events/{id}/menu ─────────────────────────────────────────────────────
+
+    @Test
+    void getEventMenu_eclipse_returns16Items() throws Exception {
+        // 15 Eclipse products + p_test = 16 distinct items across all 3 bars
+        mockMvc.perform(get("/events/e1/menu"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(16)));
+    }
+
+    @Test
+    void getEventMenu_cumbiero_returns9Items() throws Exception {
+        // p16-p23 (8 Cumbiero items) + p_test = 9 distinct items across 2 bars
+        mockMvc.perform(get("/events/e2/menu"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(9)));
+    }
+
+    @Test
+    void getEventMenu_noOverlapBetweenEvents() throws Exception {
+        // Eclipse menu should not contain Cumbiero-exclusive items and vice versa
+        mockMvc.perform(get("/events/e1/menu"))
+                .andExpect(jsonPath("$[*].id", not(hasItem("p16"))))
+                .andExpect(jsonPath("$[*].id", not(hasItem("p21"))));
+        mockMvc.perform(get("/events/e2/menu"))
+                .andExpect(jsonPath("$[*].id", not(hasItem("p1"))))
+                .andExpect(jsonPath("$[*].id", not(hasItem("p14"))));
     }
 
     // ── /bars/{id}/menu ──────────────────────────────────────────────────────
 
     @Test
     void getBarMenu_southIncludesVipExclusives() throws Exception {
-        // South is the VIP bar; it should carry the premium-only champagne/whisky.
-        mockMvc.perform(get("/bars/south/menu"))
+        mockMvc.perform(get("/bars/eclipse-south/menu"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.id == 'p14')].name", hasItem("Champagne Premium")))
                 .andExpect(jsonPath("$[?(@.id == 'p15')].name", hasItem("Whisky Premium")));
@@ -113,7 +166,7 @@ class DataEndpointsTest {
 
     @Test
     void getBarMenu_northExcludesVipExclusives() throws Exception {
-        mockMvc.perform(get("/bars/north/menu"))
+        mockMvc.perform(get("/bars/eclipse-north/menu"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[*].id", not(hasItem("p14"))))
                 .andExpect(jsonPath("$[*].id", not(hasItem("p15"))));
@@ -121,10 +174,9 @@ class DataEndpointsTest {
 
     @Test
     void getBarMenu_returnsSubsetOfProducts() throws Exception {
-        // Each bar's menu must be a strict subset of /products
-        mockMvc.perform(get("/bars/center/menu"))
+        mockMvc.perform(get("/bars/eclipse-center/menu"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(lessThan(15))));
+                .andExpect(jsonPath("$", hasSize(lessThan(24))));
     }
 
     @Test
@@ -156,38 +208,30 @@ class DataEndpointsTest {
     }
 
     // ── /events ───────────────────────────────────────────────────────────────
-    // Seeded events (relative to NOW): e1 active, e2 upcoming, e3 just finished
-    // (within 6h grace), e4 finished 60 days ago (filtered out), e5 far future.
-    // GET /events filters out events whose endsAt < NOW - 6h, ordered by startsAt.
+    // Active/visible: e1 (live), e2 (live), e3 (upcoming), e4 (recently finished, within 6h grace), e5 (far future)
 
     @Test
-    void getEvents_returnsActiveAndUpcoming() throws Exception {
+    void getEvents_returns5VisibleEvents() throws Exception {
         mockMvc.perform(get("/events"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(6)));
+                .andExpect(jsonPath("$", hasSize(5)));
     }
 
     @Test
-    void getEvents_includesMultipleLiveEvents() throws Exception {
-        // e1, e1b, e1c all overlap "now" — entry screen needs more than one
-        // live option for the user to choose from.
+    void getEvents_includesTwoLiveEvents() throws Exception {
         mockMvc.perform(get("/events"))
                 .andExpect(jsonPath("$[*].name", hasItem("Festival Eclipse")))
-                .andExpect(jsonPath("$[*].name", hasItem("Festival Cumbiero")))
-                .andExpect(jsonPath("$[*].name", hasItem("Trasnoche Indie")));
+                .andExpect(jsonPath("$[*].name", hasItem("Festival Cumbiero")));
     }
 
     @Test
     void getEvents_excludesFinalizedBeyondGrace() throws Exception {
         mockMvc.perform(get("/events"))
-                .andExpect(jsonPath("$[*].name", not(hasItem("Lollapalooza Argentina 2025"))))
-                .andExpect(jsonPath("$[*].name", hasItem("Festival Eclipse")))
-                .andExpect(jsonPath("$[*].name", hasItem("Lollapalooza Argentina 2027")));
+                .andExpect(jsonPath("$[*].name", not(hasItem("Lollapalooza Argentina 2025"))));
     }
 
     @Test
     void getEvents_includesRecentlyFinishedWithinGrace() throws Exception {
-        // Quilmes Rock ended 1h ago (< 6h grace) and should still appear
         mockMvc.perform(get("/events"))
                 .andExpect(jsonPath("$[*].name", hasItem("Quilmes Rock")));
     }
