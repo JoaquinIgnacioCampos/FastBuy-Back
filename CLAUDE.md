@@ -30,6 +30,24 @@ Spring Boot backend for FastBuy. Java 17, Maven wrapper (`mvnw`). Started via `s
 - Seed orders in `data.sql` expanded from 3 to 8 rows distributed across north/center/south so all three bars have queue+preparing+ready coverage. `OrdersControllerTest` uses a `SEED_STATES` map (IDs 1–8) in its `@AfterEach` cleanup to restore the table — extend that map if new seed orders are added.
 - Mercado Pago real-charge spike research is in `mercado-pago-spike.md` (gitignored from the merge — delete before merging the spike PR). Checkout Pro via `POST /payments/preference` is the lowest-effort path; needs `MP_ACCESS_TOKEN` env var. Sandbox test card: `5031 7557 3453 0604`, CVV `123`, any future expiry.
 
+### 2026-06-03 — Pre-release cleanup: event-scoped bars, bartender login, delivered tab, MP account linking
+
+- **Schema changes:** `bars` table gains `event_id VARCHAR(50) NOT NULL FK → events(id)`. New tables: `bartender_users(id, username UNIQUE, password_hash, bar_id FK)` and `payment_accounts(id, event_id UNIQUE FK, mp_user_id, access_token, refresh_token, expires_at, linked_at)`.
+- **Two distinct live events with different lineups:**
+  - *Festival Eclipse (e1)*: 3 bars (`eclipse-north`, `eclipse-center`, `eclipse-south`), 15 Eclipse products (p1–p15, beer/food focus) + `p_test` dev product at $5 ARS.
+  - *Festival Cumbiero (e2)*: 2 bars (`cumbia-main`, `cumbia-vip`), 8 Cumbiero products (p16–p23, fernet/wine focus) + `p_test`. No product overlap between events.
+- **`Bar` entity** gains `@ManyToOne Event event` (`@JsonIgnore`) and a read-only `eventId` column (`insertable=false, updatable=false`) that appears in the JSON response.
+- **`BarsRepository`** gains `findByEventId(eventId)`. **`OrdersRepository`** gains `findTop50ByBarAndStatusOrderByIdDesc` for the delivered tab. **`OrdersService.pickLeastLoadedBar`** accepts `eventId` and scopes candidate bars to `barsRepo.findByEventId(eventId)` when provided; falls back to all bars when `eventId` is null.
+- **`EventsController`** gains `GET /events/{eventId}/bars` and `GET /events/{eventId}/menu` (distinct union of products across all bars of that event, implemented in `BarsService.getMenuForEvent`).
+- **`OrdersController`** accepts optional `?status=delivered` on `GET /orders?bar={id}` — returns the last 50 delivered orders for that bar via the new repository method.
+- **`CreateOrderRequest`** gains optional `eventId` field for event-scoped bar assignment.
+- **Bartender auth** (`POST /auth/bartender/login`): `AuthController` → `AuthService` → `BartenderUsersRepository.findByUsername` → BCrypt password check → `LoginResponse{username, barId, barLabel, eventId, eventName}`. Returns 401 on miss.
+- **`DataInitializer`** (`Config/DataInitializer.java`): seeds 5 `BartenderUser` rows on first boot (table-empty guard) using `BCryptPasswordEncoder`. Dev credentials: `eclipse-north/norte123`, `eclipse-center/centro123`, `eclipse-south/sur123`, `cumbia-main/principal123`, `cumbia-vip/vip123`.
+- **`SecurityConfig`** exposes `PasswordEncoder` as a `@Bean` (BCrypt). All endpoints remain `permitAll()` — no JWT/session wiring this round.
+- **Payment account linking** (`GET|POST|DELETE /events/{eventId}/payment-account`): `PaymentAccountsController` → `PaymentAccountsService`. `POST` body `{ accessToken }` validates the token against MP `/users/me`, stores the account. `PaymentsService.createPreference` now calls `PaymentAccountsService.getTokenForEvent(eventId)` as the first fallback before the env-var token.
+- **`PaymentsService`** logs the MP preference response at INFO when not simulated (one line, no secrets).
+- **Tests:** all 63 pass. `OrdersControllerTest` updated for new bar IDs and seed layout. `DataEndpointsTest` updated for 5 bars, 24 products, 5 visible events, and per-event menu sizes (Eclipse 16, Cumbiero 9).
+
 ### 2026-06-03 — Lenient bar assignment + Mercado Pago integration
 - `OrdersService.pickLeastLoadedBar` is two-phase: **strict** (bar serves every requested PID) wins; **lenient fallback** (bar with the most matches, tie-broken by least load) catches mixed carts that previously 422'd. Result: `POST /orders` now succeeds for any cart with valid product IDs. The brittle "no bar can serve all items" 422 is gone — `OrdersControllerTest.createOrder_mixedCart_fallsBackToBestMatchBar` covers the new path.
 - New `POST /payments/preference` (Checkout Pro). Body `{ orderId }`; response `{ preferenceId, initPoint, sandboxInitPoint, simulated }`. Implementation in `Services/PaymentsService.java` uses Spring `RestClient` directly (no MP Java SDK — saves ~3 MB and the deprecated transitive deps).
