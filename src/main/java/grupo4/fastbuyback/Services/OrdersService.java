@@ -5,28 +5,42 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import grupo4.fastbuyback.DTOs.CreateOrderRequest;
 import grupo4.fastbuyback.DTOs.ItemDto;
 import grupo4.fastbuyback.DTOs.OrderResponse;
+import grupo4.fastbuyback.Entities.Bar;
 import grupo4.fastbuyback.Entities.Order;
 import grupo4.fastbuyback.Entities.OrderState;
+import grupo4.fastbuyback.Entities.Product;
+import grupo4.fastbuyback.Repositories.BarsRepository;
 import grupo4.fastbuyback.Repositories.OrdersRepository;
+import grupo4.fastbuyback.Repositories.ProductsRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class OrdersService {
 
+    private static final List<OrderState> ACTIVE_FOR_LOAD =
+            List.of(OrderState.QUEUE, OrderState.PREPARING);
+    private static final List<OrderState> ACTIVE_FOR_BAR_VIEW =
+            List.of(OrderState.QUEUE, OrderState.PREPARING, OrderState.READY);
+
     private final OrdersRepository repo;
+    private final BarsRepository barsRepo;
+    private final ProductsRepository productsRepo;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public OrdersService(OrdersRepository repo) {
+    public OrdersService(OrdersRepository repo, BarsRepository barsRepo, ProductsRepository productsRepo) {
         this.repo = repo;
+        this.barsRepo = barsRepo;
+        this.productsRepo = productsRepo;
     }
 
     public List<OrderResponse> getOrdersByBar(String barId) {
-        List<OrderState> active = List.of(OrderState.QUEUE, OrderState.PREPARING, OrderState.READY);
-        return repo.findByBarAndStatusIn(barId, active)
+        return repo.findByBarAndStatusIn(barId, ACTIVE_FOR_BAR_VIEW)
                    .stream()
                    .map(this::toResponse)
                    .toList();
@@ -62,15 +76,82 @@ public class OrdersService {
 
     public OrderResponse createOrder(CreateOrderRequest req) {
         try {
+            String barId = (req.bar() == null || req.bar().isBlank())
+                    ? pickLeastLoadedBar(req.items())
+                    : req.bar();
+
             Order order = new Order();
             order.setTotal(req.total());
-            order.setBar(req.bar());
+            order.setBar(barId);
             order.setStatus(OrderState.QUEUE);
             order.setItems(mapper.writeValueAsString(req.items()));
             order.setTime(LocalTime.now().format(DateTimeFormatter.ofPattern("H:mm")));
             return toResponse(repo.save(order));
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to create order", e);
+        }
+    }
+
+    /**
+     * Picks a bar for the requested items. Two-phase:
+     *   1. Strict — bars whose menu contains every requested PID; pick least-loaded.
+     *   2. Lenient — if no bar serves all items, pick the bar that serves the
+     *      most of them, breaking ties by least load. Always returns a bar
+     *      (or throws if the DB has no bars at all).
+     * Load = sum of item quantities across QUEUE+PREPARING orders for that bar.
+     */
+    private String pickLeastLoadedBar(List<ItemDto> items) {
+        Set<String> wanted = items.stream().map(ItemDto::pid).collect(Collectors.toSet());
+
+        List<Bar> bars = barsRepo.findAll();
+        if (bars.isEmpty()) {
+            throw new IllegalStateException("No bars are configured");
+        }
+
+        String strictBest = null;
+        int strictBestLoad = Integer.MAX_VALUE;
+
+        String lenientBest = null;
+        int lenientBestMatches = -1;
+        int lenientBestLoad = Integer.MAX_VALUE;
+
+        for (Bar bar : bars) {
+            Set<String> menu = productsRepo.findByBarId(bar.getId())
+                                           .stream()
+                                           .map(Product::getId)
+                                           .collect(Collectors.toSet());
+            int matches = (int) wanted.stream().filter(menu::contains).count();
+            int load = repo.findByBarAndStatusIn(bar.getId(), ACTIVE_FOR_LOAD)
+                           .stream()
+                           .mapToInt(this::sumItemQuantities)
+                           .sum();
+
+            if (matches == wanted.size() && load < strictBestLoad) {
+                strictBestLoad = load;
+                strictBest = bar.getId();
+            }
+            if (matches > lenientBestMatches
+                    || (matches == lenientBestMatches && load < lenientBestLoad)) {
+                lenientBestMatches = matches;
+                lenientBestLoad = load;
+                lenientBest = bar.getId();
+            }
+        }
+
+        return strictBest != null ? strictBest : lenientBest;
+    }
+
+    private int sumItemQuantities(Order o) {
+        try {
+            List<ItemDto> parsed = mapper.readValue(
+                    o.getItems(),
+                    new TypeReference<List<ItemDto>>() {}
+            );
+            return parsed.stream().mapToInt(ItemDto::q).sum();
+        } catch (Exception e) {
+            return 0;
         }
     }
 

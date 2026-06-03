@@ -16,6 +16,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.hamcrest.Matchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -25,16 +26,31 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Integration tests for the orders endpoints.
  *
  * Seed data (loaded once from data.sql when the Spring context starts):
- *   ID 1 → north, QUEUE
- *   ID 2 → north, PREPARING
+ *   ID 1 → north,  QUEUE
+ *   ID 2 → north,  PREPARING
  *   ID 3 → center, READY
+ *   ID 4 → center, QUEUE
+ *   ID 5 → center, PREPARING
+ *   ID 6 → south,  QUEUE
+ *   ID 7 → south,  PREPARING
+ *   ID 8 → south,  READY
  *
- * @AfterEach resets those three rows back to their original statuses and
- * deletes any extra orders created during tests, keeping the DB clean for
- * the next test method.
+ * @AfterEach restores those rows to their original statuses and deletes any
+ * extra orders created during tests, keeping the DB clean for the next test.
  */
 @SpringBootTest
 class OrdersControllerTest {
+
+    private static final Map<Long, OrderState> SEED_STATES = Map.of(
+            1L, OrderState.QUEUE,
+            2L, OrderState.PREPARING,
+            3L, OrderState.READY,
+            4L, OrderState.QUEUE,
+            5L, OrderState.PREPARING,
+            6L, OrderState.QUEUE,
+            7L, OrderState.PREPARING,
+            8L, OrderState.READY
+    );
 
     @Autowired private WebApplicationContext wac;
     @Autowired private OrdersRepository repo;
@@ -53,12 +69,9 @@ class OrdersControllerTest {
 
     @AfterEach
     void cleanup() {
-        setStatus(1L, OrderState.QUEUE);
-        setStatus(2L, OrderState.PREPARING);
-        setStatus(3L, OrderState.READY);
-        // Delete any orders created by tests (seed IDs are 1, 2, 3)
+        SEED_STATES.forEach(this::setStatus);
         repo.findAll().stream()
-                .filter(o -> o.getId() > 3L)
+                .filter(o -> !SEED_STATES.containsKey(o.getId()))
                 .forEach(repo::delete);
     }
 
@@ -79,18 +92,18 @@ class OrdersControllerTest {
     }
 
     @Test
-    void getOrders_centerBar_returnsOneReadyOrder() throws Exception {
+    void getOrders_centerBar_returnsThreeActiveOrders() throws Exception {
         mockMvc.perform(get("/orders").param("bar", "center"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(1)))
-                .andExpect(jsonPath("$[0].status", is("ready")));
+                .andExpect(jsonPath("$", hasSize(3)))
+                .andExpect(jsonPath("$[*].status", hasItem("ready")));
     }
 
     @Test
-    void getOrders_southBar_returnsEmpty() throws Exception {
+    void getOrders_southBar_returnsThreeActiveOrders() throws Exception {
         mockMvc.perform(get("/orders").param("bar", "south"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(0)));
+                .andExpect(jsonPath("$", hasSize(3)));
     }
 
     // ── JSON shape ────────────────────────────────────────────────────────────
@@ -191,9 +204,11 @@ class OrdersControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status", is("delivered")));
 
-        // Delivered order should no longer show up in the list
+        // Delivered order should no longer show up in the list — center has 3 seeds,
+        // after delivering order 3 the remaining two (queue + preparing) stay visible.
         mockMvc.perform(get("/orders").param("bar", "center"))
-                .andExpect(jsonPath("$", hasSize(0)));
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[*].id", not(hasItem("FB3"))));
     }
 
     @Test
@@ -223,10 +238,10 @@ class OrdersControllerTest {
                 .andExpect(jsonPath("$.items", hasSize(2)))
                 .andReturn();
 
-        // Verify the ID is numeric and > 3 (cleanup @AfterEach handles deletion)
+        // Verify the ID is numeric and > 8 (8 seed rows; cleanup @AfterEach handles deletion)
         String id = JsonPath.read(result.getResponse().getContentAsString(), "$.id");
         long numericId = Long.parseLong(id.replace("FB", ""));
-        assert numericId > 3 : "Expected created order id > 3, got " + numericId;
+        assert numericId > 8 : "Expected created order id > 8, got " + numericId;
     }
 
     @Test
@@ -255,14 +270,50 @@ class OrdersControllerTest {
     }
 
     @Test
-    void createOrder_missingBar_returns400() throws Exception {
+    void createOrder_omitsBar_serverAssignsLeastLoaded() throws Exception {
+        // Bar is now optional — server picks the least-loaded bar that serves
+        // every item. p1 is carried by 'north' (2 active orders, ~3 drinks) and
+        // 'center' (3 active orders, ~3 drinks). The assignment must land on
+        // a bar that actually carries p1.
         String body = """
                 {"items":[{"pid":"p1","q":1}],"total":8000}
                 """;
         mockMvc.perform(post("/orders")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.bar", anyOf(is("north"), is("center"))))
+                .andExpect(jsonPath("$.status", is("queue")));
+    }
+
+    @Test
+    void createOrder_vipItem_routesToSouth() throws Exception {
+        // Champagne (p14) is a south-only product, so assignment must pick south.
+        String body = """
+                {"items":[{"pid":"p14","q":1}],"total":18000}
+                """;
+        mockMvc.perform(post("/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.bar", is("south")));
+    }
+
+    @Test
+    void createOrder_mixedCart_fallsBackToBestMatchBar() throws Exception {
+        // p7 (Sprite) is only at north; p14 (Champagne) is only at south.
+        // No single bar carries both. With the lenient fallback, the order still
+        // gets created against the bar that serves the most items (a tiebreak
+        // between north and south, both with 1 match — least-loaded wins).
+        String body = """
+                {"items":[{"pid":"p7","q":1},{"pid":"p14","q":1}],"total":21000}
+                """;
+        mockMvc.perform(post("/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status", is("queue")))
+                .andExpect(jsonPath("$.bar", anyOf(is("north"), is("south"))));
     }
 
     @Test

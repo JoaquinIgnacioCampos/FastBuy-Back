@@ -2,13 +2,15 @@ package grupo4.fastbuyback.Services;
 
 import grupo4.fastbuyback.Entities.Event;
 import grupo4.fastbuyback.Repositories.EventsRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
 public class EventsService {
+
+    private static final long GRACE_PERIOD_HOURS = 6;
 
     private final EventsRepository repo;
 
@@ -16,7 +18,8 @@ public class EventsService {
         this.repo = repo;
     }
 
-    public List<Event> getAll() {
-        return repo.findAll();
+    public List<Event> getActive() {
+        LocalDateTime cutoff = LocalDateTime.now().minusHours(GRACE_PERIOD_HOURS);
+        return repo.findActiveSince(cutoff);
     }
 }

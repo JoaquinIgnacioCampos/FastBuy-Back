@@ -15,14 +15,27 @@ CREATE TABLE IF NOT EXISTS products (
     name     VARCHAR(255) NOT NULL,
     category VARCHAR(50)  NOT NULL,
     price    DOUBLE       NOT NULL,
-    stock    INT          NOT NULL
+    stock    INT          NOT NULL,
+    image    VARCHAR(255),
+    emoji    VARCHAR(16),
+    subtitle VARCHAR(255)
+);
+
+CREATE TABLE IF NOT EXISTS bar_products (
+    bar_id     VARCHAR(50) NOT NULL,
+    product_id VARCHAR(50) NOT NULL,
+    PRIMARY KEY (bar_id, product_id),
+    FOREIGN KEY (bar_id)     REFERENCES bars(id),
+    FOREIGN KEY (product_id) REFERENCES products(id)
 );
 
 CREATE TABLE IF NOT EXISTS events (
-    id    VARCHAR(50)  NOT NULL PRIMARY KEY,
-    name  VARCHAR(255) NOT NULL,
-    venue VARCHAR(255) NOT NULL,
-    hours VARCHAR(100) NOT NULL
+    id        VARCHAR(50)  NOT NULL PRIMARY KEY,
+    name      VARCHAR(255) NOT NULL,
+    venue     VARCHAR(255) NOT NULL,
+    hours     VARCHAR(100) NOT NULL,
+    starts_at TIMESTAMP    NOT NULL,
+    ends_at   TIMESTAMP    NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS orders (

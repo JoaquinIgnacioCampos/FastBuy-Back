@@ -22,4 +22,15 @@ public class Product {
     private double price;
 
     private int stock;
+
+    /** Display image: either a URL (starts with "/" or "http") or an emoji string. */
+    @Column(columnDefinition = "VARCHAR(255)")
+    private String image;
+
+    /** Fallback emoji used when {@link #image} is empty or fails to render. */
+    @Column(length = 16)
+    private String emoji;
+
+    /** Short descriptor shown under the product name (e.g. "Pinta · 473 ml"). */
+    private String subtitle;
 }

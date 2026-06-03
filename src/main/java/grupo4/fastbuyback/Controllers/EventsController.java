@@ -17,7 +17,7 @@ public class EventsController {
     }
 
     @GetMapping
-    public List<Event> getAll() {
-        return service.getAll();
+    public List<Event> getActive() {
+        return service.getActive();
     }
 }

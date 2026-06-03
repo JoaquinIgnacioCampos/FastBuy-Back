@@ -5,6 +5,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "events")
 @Getter
@@ -20,4 +22,10 @@ public class Event {
     private String venue;
 
     private String hours;
+
+    @Column(name = "starts_at", nullable = false)
+    private LocalDateTime startsAt;
+
+    @Column(name = "ends_at", nullable = false)
+    private LocalDateTime endsAt;
 }
