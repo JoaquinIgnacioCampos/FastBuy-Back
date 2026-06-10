@@ -110,6 +110,24 @@ public class OrdersService {
         return toResponse(repo.save(order));
     }
 
+    public OrderResponse activateOrder(Long id) {
+        Order order = repo.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("Order not found: " + id));
+        if (order.getStatus() != OrderState.PENDING_PAYMENT) {
+            throw new IllegalStateException("Order is not pending payment: " + order.getStatus());
+        }
+        order.setStatus(OrderState.QUEUE);
+        return toResponse(repo.save(order));
+    }
+
+    public void cancelOrder(Long id) {
+        Order order = repo.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("Order not found: " + id));
+        if (order.getStatus() == OrderState.PENDING_PAYMENT) {
+            repo.delete(order);
+        }
+    }
+
     public OrderResponse createOrder(CreateOrderRequest req) {
         try {
             String barId = (req.bar() == null || req.bar().isBlank())
@@ -119,7 +137,7 @@ public class OrdersService {
             Order order = new Order();
             order.setTotal(req.total());
             order.setBar(barId);
-            order.setStatus(OrderState.QUEUE);
+            order.setStatus(OrderState.PENDING_PAYMENT);
             order.setItems(mapper.writeValueAsString(req.items()));
             order.setTime(LocalTime.now().format(DateTimeFormatter.ofPattern("H:mm")));
             return toResponse(repo.save(order));

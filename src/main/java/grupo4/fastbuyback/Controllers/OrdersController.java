@@ -39,6 +39,16 @@ public class OrdersController {
         return service.advanceOrder(parseId(id), req != null ? req.bartenderId() : null);
     }
 
+    @PostMapping("/{id}/activate")
+    public OrderResponse activate(@PathVariable String id) {
+        return service.activateOrder(parseId(id));
+    }
+
+    @DeleteMapping("/{id}")
+    public void cancel(@PathVariable String id) {
+        service.cancelOrder(parseId(id));
+    }
+
     @PostMapping("/{id}/release")
     public OrderResponse release(@PathVariable String id) {
         return service.releaseOrder(parseId(id));
