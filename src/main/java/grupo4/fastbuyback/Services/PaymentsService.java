@@ -2,6 +2,14 @@ package grupo4.fastbuyback.Services;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mercadopago.MercadoPagoConfig;
+import com.mercadopago.client.preference.PreferenceBackUrlsRequest;
+import com.mercadopago.client.preference.PreferenceClient;
+import com.mercadopago.client.preference.PreferenceItemRequest;
+import com.mercadopago.client.preference.PreferenceRequest;
+import com.mercadopago.exceptions.MPApiException;
+import com.mercadopago.exceptions.MPException;
+import com.mercadopago.resources.preference.Preference;
 import grupo4.fastbuyback.DTOs.ItemDto;
 import grupo4.fastbuyback.DTOs.PreferenceResponse;
 import grupo4.fastbuyback.Entities.Order;
@@ -11,17 +19,12 @@ import grupo4.fastbuyback.Repositories.ProductsRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClient;
 
+import java.math.BigDecimal;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Builds a Mercado Pago Checkout Pro preference for an existing order and
@@ -36,14 +39,12 @@ import java.util.Map;
 public class PaymentsService {
 
     private static final Logger log = LoggerFactory.getLogger(PaymentsService.class);
-    private static final String MP_PREFERENCES_URL = "https://api.mercadopago.com/checkout/preferences";
 
     private final OrdersRepository ordersRepo;
     private final ProductsRepository productsRepo;
     private final PaymentAccountsService paymentAccountsService;
     private final String platformToken;
     private final String webOrigin;
-    private final RestClient http;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public PaymentsService(
@@ -58,7 +59,6 @@ public class PaymentsService {
         this.paymentAccountsService = paymentAccountsService;
         this.platformToken = platformToken;
         this.webOrigin = webOrigin;
-        this.http = RestClient.create();
     }
 
     public PreferenceResponse createPreference(String orderId) {
@@ -66,69 +66,31 @@ public class PaymentsService {
         Order order = ordersRepo.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Order not found: " + orderId));
 
-        // Resolve token: per-event account → platform env-var → simulated.
         String token = resolveToken(order);
         if (token == null) {
             return PreferenceResponse.simulated(simulatedReturnUrl(orderId, "approved"));
         }
 
-        Map<String, Object> body = buildPreferenceBody(order);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> resp = http.post()
-                .uri(MP_PREFERENCES_URL)
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(body)
-                .retrieve()
-                .body(Map.class);
-
-        if (resp == null) {
-            throw new IllegalStateException("Empty response from Mercado Pago");
-        }
-
-        String initPoint        = stringOrNull(resp.get("init_point"));
-        String sandboxInitPoint = stringOrNull(resp.get("sandbox_init_point"));
-
-        // Test tokens (TEST-…) must use sandbox_init_point; production tokens use init_point.
-        boolean isTestToken = token.startsWith("TEST-");
-        String checkoutUrl  = isTestToken ? sandboxInitPoint : initPoint;
-
-        log.info("MP preference created: id={} sandbox={} url={}", resp.get("id"), isTestToken, checkoutUrl);
-
-        return PreferenceResponse.real(
-                stringOrNull(resp.get("id")),
-                checkoutUrl,
-                sandboxInitPoint
-        );
-    }
-
-    private String resolveToken(Order order) {
-        // 1. Try per-event token (order.bar → bar's event_id)
         try {
-            String eventId = null;
-            if (order.getBar() != null) {
-                // Lazily derive eventId from bar — look it up via the bar's eventId column
-                // using a simple query approach: PaymentAccountsService looks up by eventId,
-                // but we don't have a BarRepository injected here. We rely on the order's
-                // bar to carry eventId via PaymentAccountsService if we accept eventId on order.
-                // For now, check the platform token only; per-event lookup handled via eventId
-                // that should be passed when available. Simplification: skip per-event here.
-                // TODO: inject BarsRepository and resolve eventId from bar when needed.
-            }
-            if (eventId != null) {
-                var perEvent = paymentAccountsService.getTokenForEvent(eventId);
-                if (perEvent.isPresent()) return perEvent.get();
-            }
-        } catch (Exception ignored) {}
+            MercadoPagoConfig.setAccessToken(token);
+            PreferenceRequest prefRequest = buildSDKRequest(order);
+            Preference pref = new PreferenceClient().create(prefRequest);
 
-        // 2. Platform env-var token
-        if (platformToken != null && !platformToken.isBlank()) return platformToken;
+            boolean isTestToken = token.startsWith("TEST-");
+            String checkoutUrl  = isTestToken ? pref.getSandboxInitPoint() : pref.getInitPoint();
+            log.info("MP preference created: id={} sandbox={} url={}", pref.getId(), isTestToken, checkoutUrl);
 
-        // 3. Simulated
-        return null;
+            return PreferenceResponse.real(pref.getId(), checkoutUrl, pref.getSandboxInitPoint());
+
+        } catch (MPApiException e) {
+            log.error("MP API error: status={} body={}", e.getStatusCode(), e.getApiResponse().getContent());
+            throw new RuntimeException("Mercado Pago API error: " + e.getMessage(), e);
+        } catch (MPException e) {
+            throw new RuntimeException("Mercado Pago connection error", e);
+        }
     }
 
-    private Map<String, Object> buildPreferenceBody(Order order) {
+    private PreferenceRequest buildSDKRequest(Order order) {
         List<ItemDto> orderItems;
         try {
             orderItems = mapper.readValue(order.getItems(), new TypeReference<List<ItemDto>>() {});
@@ -136,31 +98,46 @@ public class PaymentsService {
             throw new RuntimeException("Failed to parse items for order " + order.getId(), e);
         }
 
-        List<Map<String, Object>> mpItems = new ArrayList<>();
-        for (ItemDto it : orderItems) {
+        List<PreferenceItemRequest> mpItems = orderItems.stream().map(it -> {
             Product p = productsRepo.findById(it.pid()).orElse(null);
-            Map<String, Object> mpItem = new HashMap<>();
-            mpItem.put("id", it.pid());
-            mpItem.put("title", p != null ? p.getName() : it.pid());
-            mpItem.put("quantity", it.q());
-            mpItem.put("currency_id", "ARS");
-            mpItem.put("unit_price", p != null ? p.getPrice() : (order.getTotal() / Math.max(1, it.q())));
-            mpItems.add(mpItem);
-        }
+            String title = p != null ? p.getName() : it.pid();
+            double price = p != null ? p.getPrice() : (order.getTotal() / Math.max(1, it.q()));
+            return PreferenceItemRequest.builder()
+                    .id(it.pid())
+                    .title(title)
+                    .quantity(it.q())
+                    .unitPrice(BigDecimal.valueOf(price))
+                    .currencyId("ARS")
+                    .build();
+        }).toList();
 
         String externalRef = "FB" + order.getId();
-        Map<String, Object> backUrls = Map.of(
-                "success", returnUrl(externalRef, "approved"),
-                "pending", returnUrl(externalRef, "pending"),
-                "failure", returnUrl(externalRef, "rejected")
-        );
+        return PreferenceRequest.builder()
+                .items(mpItems)
+                .backUrls(PreferenceBackUrlsRequest.builder()
+                        .success(returnUrl(externalRef, "approved"))
+                        .failure(returnUrl(externalRef, "rejected"))
+                        .pending(returnUrl(externalRef, "pending"))
+                        .build())
+                .autoReturn("approved")
+                .externalReference(externalRef)
+                .build();
+    }
 
-        Map<String, Object> body = new HashMap<>();
-        body.put("items", mpItems);
-        body.put("external_reference", externalRef);
-        body.put("back_urls", backUrls);
-        body.put("auto_return", "approved");
-        return body;
+    private String resolveToken(Order order) {
+        try {
+            String eventId = null;
+            if (order.getBar() != null) {
+                // TODO: inject BarsRepository to resolve eventId from bar for per-event tokens
+            }
+            if (eventId != null) {
+                var perEvent = paymentAccountsService.getTokenForEvent(eventId);
+                if (perEvent.isPresent()) return perEvent.get();
+            }
+        } catch (Exception ignored) {}
+
+        if (platformToken != null && !platformToken.isBlank()) return platformToken;
+        return null;
     }
 
     private String returnUrl(String externalRef, String status) {
@@ -171,10 +148,6 @@ public class PaymentsService {
 
     private String simulatedReturnUrl(String orderId, String status) {
         return returnUrl(orderId, status);
-    }
-
-    private static String stringOrNull(Object v) {
-        return v == null ? null : v.toString();
     }
 
     private static Long parseId(String orderId) {
