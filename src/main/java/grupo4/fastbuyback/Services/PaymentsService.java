@@ -114,16 +114,20 @@ public class PaymentsService {
         }).toList();
 
         String externalRef = "FB" + order.getId();
-        return PreferenceRequest.builder()
+        PreferenceRequest.PreferenceRequestBuilder builder = PreferenceRequest.builder()
                 .items(mpItems)
                 .backUrls(PreferenceBackUrlsRequest.builder()
                         .success(returnUrl(externalRef, "approved"))
                         .failure(returnUrl(externalRef, "rejected"))
                         .pending(returnUrl(externalRef, "pending"))
                         .build())
-                .autoReturn("approved")
-                .externalReference(externalRef)
-                .build();
+                .externalReference(externalRef);
+
+        // auto_return causes too-many-redirects in sandbox due to extra MP hops;
+        // omit it there — customer clicks "Volver al sitio" instead.
+        if (!sandbox) builder.autoReturn("approved");
+
+        return builder.build();
     }
 
     private String resolveToken(Order order) {
