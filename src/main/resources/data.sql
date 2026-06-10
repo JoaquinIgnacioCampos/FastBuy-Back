@@ -115,11 +115,17 @@ INSERT INTO bar_products (bar_id, product_id) VALUES ('cumbia-vip', 'p23');
 INSERT INTO bar_products (bar_id, product_id) VALUES ('cumbia-vip', 'p_test');
 
 -- Sample orders
+-- eclipse-north: 4 QUEUE orders to demonstrate oldest-first lock + disabled buttons
 INSERT INTO orders (total, items, status, bar,            time) VALUES (16500, '[{"pid":"p1","q":2},{"pid":"p11","q":1}]',  'QUEUE',     'eclipse-north',  '2:14');
 INSERT INTO orders (total, items, status, bar,            time) VALUES (9000,  '[{"pid":"p4","q":1}]',                      'PREPARING', 'eclipse-north',  '2:22');
+INSERT INTO orders (total, items, status, bar,            time) VALUES (8000,  '[{"pid":"p3","q":2}]',                      'QUEUE',     'eclipse-north',  '2:31');
+INSERT INTO orders (total, items, status, bar,            time) VALUES (4500,  '[{"pid":"p7","q":1}]',                      'QUEUE',     'eclipse-north',  '2:38');
+INSERT INTO orders (total, items, status, bar,            time) VALUES (13000, '[{"pid":"p5","q":1},{"pid":"p6","q":1}]',   'QUEUE',     'eclipse-north',  '2:44');
+-- eclipse-center / eclipse-south
 INSERT INTO orders (total, items, status, bar,            time) VALUES (5000,  '[{"pid":"p8","q":1}]',                      'READY',     'eclipse-center', '2:30');
 INSERT INTO orders (total, items, status, bar,            time) VALUES (12500, '[{"pid":"p2","q":1},{"pid":"p10","q":1}]',  'QUEUE',     'eclipse-center', '2:45');
 INSERT INTO orders (total, items, status, bar,            time) VALUES (36000, '[{"pid":"p14","q":2}]',                     'QUEUE',     'eclipse-south',  '2:18');
 INSERT INTO orders (total, items, status, bar,            time) VALUES (23500, '[{"pid":"p15","q":1},{"pid":"p4","q":1}]',  'PREPARING', 'eclipse-south',  '2:35');
+-- cumbia bars
 INSERT INTO orders (total, items, status, bar,            time) VALUES (11000, '[{"pid":"p16","q":2}]',                     'QUEUE',     'cumbia-main',    '3:10');
 INSERT INTO orders (total, items, status, bar,            time) VALUES (6500,  '[{"pid":"p17","q":1}]',                     'PREPARING', 'cumbia-vip',     '3:15');

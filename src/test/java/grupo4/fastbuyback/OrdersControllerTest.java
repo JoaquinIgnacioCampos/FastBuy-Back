@@ -28,27 +28,33 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Integration tests for the orders endpoints.
  *
  * Seed data (from data.sql):
- *   ID 1 → eclipse-north,  QUEUE
- *   ID 2 → eclipse-north,  PREPARING
- *   ID 3 → eclipse-center, READY
- *   ID 4 → eclipse-center, QUEUE
- *   ID 5 → eclipse-south,  QUEUE
- *   ID 6 → eclipse-south,  PREPARING
- *   ID 7 → cumbia-main,    QUEUE
- *   ID 8 → cumbia-vip,     PREPARING
+ *   ID  1 → eclipse-north,  QUEUE
+ *   ID  2 → eclipse-north,  PREPARING
+ *   ID  3 → eclipse-north,  QUEUE
+ *   ID  4 → eclipse-north,  QUEUE
+ *   ID  5 → eclipse-north,  QUEUE
+ *   ID  6 → eclipse-center, READY
+ *   ID  7 → eclipse-center, QUEUE
+ *   ID  8 → eclipse-south,  QUEUE
+ *   ID  9 → eclipse-south,  PREPARING
+ *   ID 10 → cumbia-main,    QUEUE
+ *   ID 11 → cumbia-vip,     PREPARING
  */
 @SpringBootTest
 class OrdersControllerTest {
 
-    private static final Map<Long, OrderState> SEED_STATES = Map.of(
-            1L, OrderState.QUEUE,
-            2L, OrderState.PREPARING,
-            3L, OrderState.READY,
-            4L, OrderState.QUEUE,
-            5L, OrderState.QUEUE,
-            6L, OrderState.PREPARING,
-            7L, OrderState.QUEUE,
-            8L, OrderState.PREPARING
+    private static final Map<Long, OrderState> SEED_STATES = Map.ofEntries(
+            Map.entry(1L,  OrderState.QUEUE),
+            Map.entry(2L,  OrderState.PREPARING),
+            Map.entry(3L,  OrderState.QUEUE),
+            Map.entry(4L,  OrderState.QUEUE),
+            Map.entry(5L,  OrderState.QUEUE),
+            Map.entry(6L,  OrderState.READY),
+            Map.entry(7L,  OrderState.QUEUE),
+            Map.entry(8L,  OrderState.QUEUE),
+            Map.entry(9L,  OrderState.PREPARING),
+            Map.entry(10L, OrderState.QUEUE),
+            Map.entry(11L, OrderState.PREPARING)
     );
 
     @Autowired private WebApplicationContext wac;
@@ -84,10 +90,10 @@ class OrdersControllerTest {
     // ── GET /orders ───────────────────────────────────────────────────────────
 
     @Test
-    void getOrders_northBar_returnsTwoActiveOrders() throws Exception {
+    void getOrders_northBar_returnsFiveActiveOrders() throws Exception {
         mockMvc.perform(get("/orders").param("bar", "eclipse-north"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(2)));
+                .andExpect(jsonPath("$", hasSize(5)));
     }
 
     @Test
@@ -154,12 +160,12 @@ class OrdersControllerTest {
 
     @Test
     void getOrders_deliveredStatus_returnsDeliveredOrders() throws Exception {
-        // Deliver order 3 (which is READY)
-        mockMvc.perform(post("/orders/3/deliver")).andExpect(status().isOk());
+        // Deliver order 6 (eclipse-center, READY)
+        mockMvc.perform(post("/orders/6/deliver")).andExpect(status().isOk());
 
         mockMvc.perform(get("/orders").param("bar", "eclipse-center").param("status", "delivered"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[*].id", hasItem("FB3")));
+                .andExpect(jsonPath("$[*].id", hasItem("FB6")));
     }
 
     // ── POST /orders/{id}/advance ─────────────────────────────────────────────
@@ -182,7 +188,8 @@ class OrdersControllerTest {
 
     @Test
     void advanceOrder_fromReady_returns422() throws Exception {
-        mockMvc.perform(post("/orders/3/advance"))
+        // Order 6 is eclipse-center READY
+        mockMvc.perform(post("/orders/6/advance"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error", notNullValue()));
     }
@@ -206,14 +213,15 @@ class OrdersControllerTest {
 
     @Test
     void deliverOrder_readyToDelivered() throws Exception {
-        mockMvc.perform(post("/orders/3/deliver"))
+        // Order 6 is eclipse-center READY
+        mockMvc.perform(post("/orders/6/deliver"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status", is("delivered")));
 
         // center now has only 1 active order (the QUEUE one)
         mockMvc.perform(get("/orders").param("bar", "eclipse-center"))
                 .andExpect(jsonPath("$", hasSize(1)))
-                .andExpect(jsonPath("$[*].id", not(hasItem("FB3"))));
+                .andExpect(jsonPath("$[*].id", not(hasItem("FB6"))));
     }
 
     @Test
@@ -244,7 +252,7 @@ class OrdersControllerTest {
 
         String id = JsonPath.read(result.getResponse().getContentAsString(), "$.id");
         long numericId = Long.parseLong(id.replace("FB", ""));
-        assert numericId > 8 : "Expected created order id > 8, got " + numericId;
+        assert numericId > 11 : "Expected created order id > 11, got " + numericId;
     }
 
     @Test
@@ -256,9 +264,9 @@ class OrdersControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body));
 
-        // eclipse-north now has 3 active orders (2 seed + 1 new)
+        // eclipse-north now has 6 active orders (5 seed + 1 new)
         mockMvc.perform(get("/orders").param("bar", "eclipse-north"))
-                .andExpect(jsonPath("$", hasSize(3)));
+                .andExpect(jsonPath("$", hasSize(6)));
     }
 
     @Test

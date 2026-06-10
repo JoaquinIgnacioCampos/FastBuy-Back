@@ -51,7 +51,7 @@ public class OrdersService {
             repo.save(o);
         }
 
-        return repo.findByBarAndStatusIn(barId, ACTIVE_FOR_BAR_VIEW)
+        return repo.findByBarAndStatusInOrderByIdAsc(barId, ACTIVE_FOR_BAR_VIEW)
                    .stream()
                    .map(this::toResponse)
                    .toList();
@@ -161,7 +161,7 @@ public class OrdersService {
                                            .map(Product::getId)
                                            .collect(Collectors.toSet());
             int matches = (int) wanted.stream().filter(menu::contains).count();
-            int load = repo.findByBarAndStatusIn(bar.getId(), ACTIVE_FOR_LOAD)
+            int load = repo.findByBarAndStatusInOrderByIdAsc(bar.getId(), ACTIVE_FOR_LOAD)
                            .stream()
                            .mapToInt(this::sumItemQuantities)
                            .sum();
