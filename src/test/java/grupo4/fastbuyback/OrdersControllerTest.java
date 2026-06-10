@@ -234,7 +234,7 @@ class OrdersControllerTest {
     // ── POST /orders (create) ─────────────────────────────────────────────────
 
     @Test
-    void createOrder_returns201WithPendingPaymentStatus() throws Exception {
+    void createOrder_returns201WithQueueStatus() throws Exception {
         String body = """
                 {"items":[{"pid":"p1","q":2},{"pid":"p8","q":1}],"bar":"eclipse-south","total":21000}
                 """;
@@ -243,7 +243,7 @@ class OrdersControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status", is("pending_payment")))
+                .andExpect(jsonPath("$.status", is("queue")))
                 .andExpect(jsonPath("$.bar", is("eclipse-south")))
                 .andExpect(jsonPath("$.total", is(21000.0)))
                 .andExpect(jsonPath("$.id", startsWith("FB")))
@@ -256,25 +256,15 @@ class OrdersControllerTest {
     }
 
     @Test
-    void createOrder_pendingOrderNotVisibleInBarView() throws Exception {
+    void createOrder_newOrderAppearsInList() throws Exception {
         String body = """
                 {"items":[{"pid":"p6","q":1}],"bar":"eclipse-north","total":3000}
                 """;
-        MvcResult result = mockMvc.perform(post("/orders")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andReturn();
+        mockMvc.perform(post("/orders")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body));
 
-        // Pending order is NOT visible in the bartender's active queue
-        mockMvc.perform(get("/orders").param("bar", "eclipse-north"))
-                .andExpect(jsonPath("$", hasSize(5)));
-
-        // After activation it becomes visible
-        String id = JsonPath.read(result.getResponse().getContentAsString(), "$.id");
-        mockMvc.perform(post("/orders/" + id + "/activate"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status", is("queue")));
-
+        // eclipse-north now has 6 active orders (5 seed + 1 new)
         mockMvc.perform(get("/orders").param("bar", "eclipse-north"))
                 .andExpect(jsonPath("$", hasSize(6)));
     }
@@ -303,7 +293,7 @@ class OrdersControllerTest {
                         .content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.bar", anyOf(is("eclipse-north"), is("eclipse-center"))))
-                .andExpect(jsonPath("$.status", is("pending_payment")));
+                .andExpect(jsonPath("$.status", is("queue")));
     }
 
     @Test
@@ -330,7 +320,7 @@ class OrdersControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status", is("pending_payment")))
+                .andExpect(jsonPath("$.status", is("queue")))
                 .andExpect(jsonPath("$.bar", anyOf(is("eclipse-north"), is("eclipse-south"))));
     }
 

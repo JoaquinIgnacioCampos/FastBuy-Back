@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 public enum OrderState {
-    PENDING_PAYMENT,
     QUEUE,
     PREPARING,
     READY,

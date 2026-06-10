@@ -18,6 +18,6 @@ public class PaymentsController {
 
     @PostMapping("/preference")
     public PreferenceResponse createPreference(@Valid @RequestBody PreferenceRequest req) {
-        return service.createPreference(req.orderId());
+        return service.createPreference(req.items(), req.total(), req.eventId());
     }
 }

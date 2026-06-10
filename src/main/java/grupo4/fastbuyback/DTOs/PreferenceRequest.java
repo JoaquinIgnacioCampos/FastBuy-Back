@@ -1,7 +1,11 @@
 package grupo4.fastbuyback.DTOs;
 
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+
+import java.util.List;
 
 public record PreferenceRequest(
-        @NotBlank String orderId
+        @NotEmpty List<ItemDto> items,
+        double total,
+        String eventId
 ) {}
