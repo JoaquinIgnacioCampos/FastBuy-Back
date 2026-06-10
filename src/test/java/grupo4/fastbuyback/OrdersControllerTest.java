@@ -3,6 +3,8 @@ package grupo4.fastbuyback;
 import com.jayway.jsonpath.JsonPath;
 import grupo4.fastbuyback.Entities.OrderState;
 import grupo4.fastbuyback.Repositories.OrdersRepository;
+
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -73,6 +75,8 @@ class OrdersControllerTest {
     private void setStatus(Long id, OrderState state) {
         repo.findById(id).ifPresent(o -> {
             o.setStatus(state);
+            o.setClaimedBy(null);
+            o.setClaimedAt(null);
             repo.save(o);
         });
     }
@@ -317,5 +321,50 @@ class OrdersControllerTest {
         mockMvc.perform(post("/orders")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest());
+    }
+
+    // ── Bartender locking ─────────────────────────────────────────────────────
+
+    @Test
+    void advanceOrder_setsClaimForBartender() throws Exception {
+        String body = """
+                {"bartenderId":"eclipse-north"}
+                """;
+        mockMvc.perform(post("/orders/1/advance")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("preparing")))
+                .andExpect(jsonPath("$.claimedBy", is("eclipse-north")));
+    }
+
+    @Test
+    void getOrders_expiredLock_resetsToQueue() throws Exception {
+        // Simulate a bartender that claimed order 2 three minutes ago and disconnected
+        repo.findById(2L).ifPresent(o -> {
+            o.setClaimedBy("eclipse-north");
+            o.setClaimedAt(LocalDateTime.now().minusMinutes(3));
+            repo.save(o);
+        });
+
+        mockMvc.perform(get("/orders").param("bar", "eclipse-north"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id=='FB2')].status", hasItem("queue")))
+                .andExpect(jsonPath("$[?(@.id=='FB2')].claimedBy", hasItem(nullValue())));
+    }
+
+    @Test
+    void releaseOrder_returnsToQueue() throws Exception {
+        // Claim order 2 (already PREPARING in seed)
+        repo.findById(2L).ifPresent(o -> {
+            o.setClaimedBy("eclipse-north");
+            o.setClaimedAt(LocalDateTime.now());
+            repo.save(o);
+        });
+
+        mockMvc.perform(post("/orders/2/release"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("queue")))
+                .andExpect(jsonPath("$.claimedBy", nullValue()));
     }
 }

@@ -1,5 +1,6 @@
 package grupo4.fastbuyback.Controllers;
 
+import grupo4.fastbuyback.DTOs.AdvanceRequest;
 import grupo4.fastbuyback.DTOs.CreateOrderRequest;
 import grupo4.fastbuyback.DTOs.OrderResponse;
 import grupo4.fastbuyback.Services.OrdersService;
@@ -32,8 +33,15 @@ public class OrdersController {
     }
 
     @PostMapping("/{id}/advance")
-    public OrderResponse advance(@PathVariable String id) {
-        return service.advanceOrder(parseId(id));
+    public OrderResponse advance(
+            @PathVariable String id,
+            @RequestBody(required = false) AdvanceRequest req) {
+        return service.advanceOrder(parseId(id), req != null ? req.bartenderId() : null);
+    }
+
+    @PostMapping("/{id}/release")
+    public OrderResponse release(@PathVariable String id) {
+        return service.releaseOrder(parseId(id));
     }
 
     @PostMapping("/{id}/deliver")

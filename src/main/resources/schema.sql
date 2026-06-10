@@ -41,12 +41,14 @@ CREATE TABLE IF NOT EXISTS bar_products (
 );
 
 CREATE TABLE IF NOT EXISTS orders (
-    id     INT           NOT NULL PRIMARY KEY AUTO_INCREMENT,
-    total  DOUBLE        NOT NULL,
-    items  VARCHAR(2000) NOT NULL,
-    status VARCHAR(20)   NOT NULL,
-    bar    VARCHAR(50)   NOT NULL,
-    time   VARCHAR(10)   NOT NULL
+    id         INT           NOT NULL PRIMARY KEY AUTO_INCREMENT,
+    total      DOUBLE        NOT NULL,
+    items      VARCHAR(2000) NOT NULL,
+    status     VARCHAR(20)   NOT NULL,
+    bar        VARCHAR(50)   NOT NULL,
+    time       VARCHAR(10)   NOT NULL,
+    claimed_by VARCHAR(100),
+    claimed_at TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS bartender_users (

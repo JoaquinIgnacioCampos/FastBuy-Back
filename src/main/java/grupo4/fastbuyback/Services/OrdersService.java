@@ -14,6 +14,7 @@ import grupo4.fastbuyback.Repositories.OrdersRepository;
 import grupo4.fastbuyback.Repositories.ProductsRepository;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -40,6 +41,16 @@ public class OrdersService {
     }
 
     public List<OrderResponse> getOrdersByBar(String barId) {
+        // Lazy expiry: any PREPARING order whose lock is older than 2 minutes returns to QUEUE
+        LocalDateTime expiry = LocalDateTime.now().minusMinutes(2);
+        List<Order> expired = repo.findByBarAndStatusAndClaimedAtBefore(barId, OrderState.PREPARING, expiry);
+        for (Order o : expired) {
+            o.setStatus(OrderState.QUEUE);
+            o.setClaimedBy(null);
+            o.setClaimedAt(null);
+            repo.save(o);
+        }
+
         return repo.findByBarAndStatusIn(barId, ACTIVE_FOR_BAR_VIEW)
                    .stream()
                    .map(this::toResponse)
@@ -53,7 +64,7 @@ public class OrdersService {
                    .toList();
     }
 
-    public OrderResponse advanceOrder(Long id) {
+    public OrderResponse advanceOrder(Long id, String bartenderId) {
         Order order = repo.findById(id)
             .orElseThrow(() -> new IllegalArgumentException("Order not found: " + id));
 
@@ -66,6 +77,24 @@ public class OrdersService {
         };
 
         order.setStatus(next);
+        if (next == OrderState.PREPARING && bartenderId != null && !bartenderId.isBlank()) {
+            order.setClaimedBy(bartenderId);
+            order.setClaimedAt(LocalDateTime.now());
+        }
+        return toResponse(repo.save(order));
+    }
+
+    public OrderResponse releaseOrder(Long id) {
+        Order order = repo.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("Order not found: " + id));
+
+        if (order.getStatus() != OrderState.PREPARING) {
+            throw new IllegalStateException("Only PREPARING orders can be released, current status: " + order.getStatus());
+        }
+
+        order.setStatus(OrderState.QUEUE);
+        order.setClaimedBy(null);
+        order.setClaimedAt(null);
         return toResponse(repo.save(order));
     }
 
@@ -176,7 +205,8 @@ public class OrdersService {
                 items,
                 order.getStatus(),
                 order.getBar(),
-                order.getTime()
+                order.getTime(),
+                order.getClaimedBy()
             );
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse items for order " + order.getId(), e);

@@ -55,3 +55,12 @@ Spring Boot backend for FastBuy. Java 17, Maven wrapper (`mvnw`). Started via `s
 - `mercadopago.access-token` and `fastbuy.web-origin` are wired via `application.properties` (`${MP_ACCESS_TOKEN:}` / `${FASTBUY_WEB_ORIGIN:http://localhost:5173}`).
 - `data.sql` now has 7 events (3 currently live with wide ~half-day windows so they survive a long dev session, 1 upcoming, 1 recently-finished within grace, 1 long-past filtered out, 1 far-future). Product `image` columns now hold unique emoji glyphs — no more `/img/products/*.png` URLs that 404 and collapse to duplicate fallbacks.
 - The previous `mercado-pago-spike.md` was deleted — its plan is now realized in the live code.
+
+### 2026-06-10 — Multi-bartender order locking
+- `orders` table gains `claimed_by VARCHAR(100)` and `claimed_at TIMESTAMP` (both nullable). No FK — username is stable enough.
+- `OrderResponse` DTO gains `claimedBy` (String, nullable).
+- `advanceOrder(id, bartenderId)`: QUEUE→PREPARING sets `claimedBy` + `claimedAt = now()`. PREPARING→READY keeps `claimedBy`.
+- `getOrdersByBar(barId)`: lazy expiry before returning — PREPARING orders with `claimedAt < now() - 2 min` are reset to QUEUE with null claim fields. Relies on 5s frontend polling; no scheduler needed.
+- `releaseOrder(id)`: new method, resets PREPARING → QUEUE + null claims. Exposed via `POST /orders/{id}/release`.
+- `POST /orders/{id}/advance` body: optional `{ bartenderId }` via new `AdvanceRequest` record. Backwards compatible (no body = null bartenderId = no claim set).
+- New tests in `OrdersControllerTest`: `advanceOrder_setsClaimForBartender`, `getOrders_expiredLock_resetsToQueue`, `releaseOrder_returnsToQueue`. 66 tests total, all green.
