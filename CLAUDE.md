@@ -64,3 +64,9 @@ Spring Boot backend for FastBuy. Java 17, Maven wrapper (`mvnw`). Started via `s
 - `releaseOrder(id)`: new method, resets PREPARING → QUEUE + null claims. Exposed via `POST /orders/{id}/release`.
 - `POST /orders/{id}/advance` body: optional `{ bartenderId }` via new `AdvanceRequest` record. Backwards compatible (no body = null bartenderId = no claim set).
 - New tests in `OrdersControllerTest`: `advanceOrder_setsClaimForBartender`, `getOrders_expiredLock_resetsToQueue`, `releaseOrder_returnsToQueue`. 66 tests total, all green.
+
+### 2026-06-10 — Mercado Pago sandbox notes
+- `mercadopago.sandbox=true` in `application-local.properties` routes to `sandbox_init_point` regardless of token prefix (replaces `token.startsWith("TEST-")` check).
+- `auto_return` is omitted in sandbox mode to avoid browser "too many redirects" error caused by MP's extra internal hops in the sandbox environment.
+- Test seller credentials are `APP_USR-` format (production-style, no `TEST-` token available from the developer panel for this account). Sandbox works using the test buyer's **account balance** — guest card payments (simulated test cards) are unreliable in MP sandbox Argentina with Checkout Pro. This is a known MP limitation, not a code issue.
+- Test buyer credentials are stored as comments in `application-local.properties` (gitignored). Do not commit them.
