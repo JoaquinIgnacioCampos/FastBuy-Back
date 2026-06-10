@@ -44,6 +44,7 @@ public class PaymentsService {
     private final ProductsRepository productsRepo;
     private final PaymentAccountsService paymentAccountsService;
     private final String platformToken;
+    private final boolean sandbox;
     private final String webOrigin;
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -52,12 +53,14 @@ public class PaymentsService {
             ProductsRepository productsRepo,
             PaymentAccountsService paymentAccountsService,
             @Value("${mercadopago.access-token:}") String platformToken,
+            @Value("${mercadopago.sandbox:false}") boolean sandbox,
             @Value("${fastbuy.web-origin:http://localhost:5173}") String webOrigin
     ) {
         this.ordersRepo = ordersRepo;
         this.productsRepo = productsRepo;
         this.paymentAccountsService = paymentAccountsService;
         this.platformToken = platformToken;
+        this.sandbox = sandbox;
         this.webOrigin = webOrigin;
     }
 
@@ -76,9 +79,8 @@ public class PaymentsService {
             PreferenceRequest prefRequest = buildSDKRequest(order);
             Preference pref = new PreferenceClient().create(prefRequest);
 
-            boolean isTestToken = token.startsWith("TEST-");
-            String checkoutUrl  = isTestToken ? pref.getSandboxInitPoint() : pref.getInitPoint();
-            log.info("MP preference created: id={} sandbox={} url={}", pref.getId(), isTestToken, checkoutUrl);
+            String checkoutUrl = sandbox ? pref.getSandboxInitPoint() : pref.getInitPoint();
+            log.info("MP preference created: id={} sandbox={} url={}", pref.getId(), sandbox, checkoutUrl);
 
             return PreferenceResponse.real(pref.getId(), checkoutUrl, pref.getSandboxInitPoint());
 
