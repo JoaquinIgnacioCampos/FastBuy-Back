@@ -379,10 +379,10 @@ class OrdersControllerTest {
 
     @Test
     void getOrders_expiredLock_resetsToQueue() throws Exception {
-        // Simulate a bartender that claimed order 2 three minutes ago and disconnected
+        // Simulate a bartender that claimed order 2 long ago (past the expiry window) and disconnected
         repo.findById(2L).ifPresent(o -> {
             o.setClaimedBy("eclipse-north");
-            o.setClaimedAt(LocalDateTime.now().minusMinutes(3));
+            o.setClaimedAt(LocalDateTime.now().minusMinutes(20));
             repo.save(o);
         });
 

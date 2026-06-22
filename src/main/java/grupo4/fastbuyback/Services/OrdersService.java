@@ -40,9 +40,14 @@ public class OrdersService {
         this.productsRepo = productsRepo;
     }
 
+    // A claimed PREPARING order is only auto-released back to QUEUE after this long
+    // with no progress — long enough that an actively-working bartender never trips
+    // it (a 2-minute window reverted orders mid-preparation, breaking "mark ready").
+    private static final long CLAIM_EXPIRY_MINUTES = 15;
+
     public List<OrderResponse> getOrdersByBar(String barId) {
-        // Lazy expiry: any PREPARING order whose lock is older than 2 minutes returns to QUEUE
-        LocalDateTime expiry = LocalDateTime.now().minusMinutes(2);
+        // Lazy expiry: a PREPARING order whose lock is older than the window returns to QUEUE
+        LocalDateTime expiry = LocalDateTime.now().minusMinutes(CLAIM_EXPIRY_MINUTES);
         List<Order> expired = repo.findByBarAndStatusAndClaimedAtBefore(barId, OrderState.PREPARING, expiry);
         for (Order o : expired) {
             o.setStatus(OrderState.QUEUE);
