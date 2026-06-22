@@ -51,16 +51,19 @@ public class OrdersService {
             repo.save(o);
         }
 
+        // All orders in this list share one bar, so resolve its label once.
+        String barLabel = barLabelFor(barId);
         return repo.findByBarAndStatusInOrderByIdAsc(barId, ACTIVE_FOR_BAR_VIEW)
                    .stream()
-                   .map(this::toResponse)
+                   .map(o -> toResponse(o, barLabel))
                    .toList();
     }
 
     public List<OrderResponse> getDeliveredByBar(String barId) {
+        String barLabel = barLabelFor(barId);
         return repo.findTop50ByBarAndStatusOrderByIdDesc(barId, OrderState.DELIVERED)
                    .stream()
-                   .map(this::toResponse)
+                   .map(o -> toResponse(o, barLabel))
                    .toList();
     }
 
@@ -107,6 +110,22 @@ public class OrdersService {
         }
 
         order.setStatus(OrderState.DELIVERED);
+        return toResponse(repo.save(order));
+    }
+
+    public OrderResponse cancelOrder(Long id) {
+        Order order = repo.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("Order not found: " + id));
+
+        if (order.getStatus() != OrderState.READY) {
+            throw new IllegalStateException("Only READY orders can be cancelled, current status: " + order.getStatus());
+        }
+
+        // No-show: the customer never came to pick up. Drop the order off the
+        // active board (and free the bartender) via a terminal CANCELLED state.
+        order.setStatus(OrderState.CANCELLED);
+        order.setClaimedBy(null);
+        order.setClaimedAt(null);
         return toResponse(repo.save(order));
     }
 
@@ -194,6 +213,10 @@ public class OrdersService {
     }
 
     private OrderResponse toResponse(Order order) {
+        return toResponse(order, barLabelFor(order.getBar()));
+    }
+
+    private OrderResponse toResponse(Order order, String barLabel) {
         try {
             List<ItemDto> items = mapper.readValue(
                 order.getItems(),
@@ -205,11 +228,17 @@ public class OrdersService {
                 items,
                 order.getStatus(),
                 order.getBar(),
+                barLabel,
                 order.getTime(),
                 order.getClaimedBy()
             );
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse items for order " + order.getId(), e);
         }
+    }
+
+    /** Friendly bar name (e.g. "Barra Norte") for a bar id; falls back to the id. */
+    private String barLabelFor(String barId) {
+        return barsRepo.findById(barId).map(Bar::getLabel).orElse(barId);
     }
 }

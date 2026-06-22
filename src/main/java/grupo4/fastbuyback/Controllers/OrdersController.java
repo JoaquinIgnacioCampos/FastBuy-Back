@@ -49,6 +49,11 @@ public class OrdersController {
         return service.deliverOrder(parseId(id));
     }
 
+    @PostMapping("/{id}/cancel")
+    public OrderResponse cancel(@PathVariable String id) {
+        return service.cancelOrder(parseId(id));
+    }
+
     // Phase 2 — Order creation
 
     @PostMapping

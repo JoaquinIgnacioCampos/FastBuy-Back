@@ -231,6 +231,37 @@ class OrdersControllerTest {
                 .andExpect(jsonPath("$.error", notNullValue()));
     }
 
+    // ── POST /orders/{id}/cancel (no-show) ────────────────────────────────────
+
+    @Test
+    void cancelOrder_readyToCancelled() throws Exception {
+        // Order 6 is eclipse-center READY
+        mockMvc.perform(post("/orders/6/cancel"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("cancelled")));
+
+        // A cancelled order drops off the active board
+        mockMvc.perform(get("/orders").param("bar", "eclipse-center"))
+                .andExpect(jsonPath("$[*].id", not(hasItem("FB6"))));
+    }
+
+    @Test
+    void cancelOrder_notReady_returns422() throws Exception {
+        // Order 1 is QUEUE, only READY orders can be cancelled
+        mockMvc.perform(post("/orders/1/cancel"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error", notNullValue()));
+    }
+
+    // ── Friendly bar label ────────────────────────────────────────────────────
+
+    @Test
+    void responseShape_includesFriendlyBarLabel() throws Exception {
+        mockMvc.perform(get("/orders").param("bar", "eclipse-north"))
+                .andExpect(jsonPath("$[0].bar", is("eclipse-north")))
+                .andExpect(jsonPath("$[0].barLabel", is("Barra Norte")));
+    }
+
     // ── POST /orders (create) ─────────────────────────────────────────────────
 
     @Test
