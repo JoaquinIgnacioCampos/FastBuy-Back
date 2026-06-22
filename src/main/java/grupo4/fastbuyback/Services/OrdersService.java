@@ -134,6 +134,13 @@ public class OrdersService {
         return toResponse(repo.save(order));
     }
 
+    /** Single order by id, in any state (queue/preparing/ready/delivered/cancelled). */
+    public OrderResponse getOrder(Long id) {
+        Order order = repo.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("Order not found: " + id));
+        return toResponse(order);
+    }
+
     public OrderResponse createOrder(CreateOrderRequest req) {
         try {
             String barId = (req.bar() == null || req.bar().isBlank())

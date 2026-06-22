@@ -262,6 +262,32 @@ class OrdersControllerTest {
                 .andExpect(jsonPath("$[0].barLabel", is("Barra Norte")));
     }
 
+    // ── GET /orders/{id} (single order, any state) ────────────────────────────
+
+    @Test
+    void getOne_returnsOrderWithStatus() throws Exception {
+        mockMvc.perform(get("/orders/6"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is("FB6")))
+                .andExpect(jsonPath("$.status", is("ready")));
+    }
+
+    @Test
+    void getOne_cancelledOrder_stillRetrievable() throws Exception {
+        // A cancelled order leaves the active board but stays fetchable by id,
+        // so the customer can be told it was cancelled.
+        mockMvc.perform(post("/orders/6/cancel")).andExpect(status().isOk());
+        mockMvc.perform(get("/orders/6"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("cancelled")));
+    }
+
+    @Test
+    void getOne_unknownId_returns404() throws Exception {
+        mockMvc.perform(get("/orders/9999"))
+                .andExpect(status().isNotFound());
+    }
+
     // ── POST /orders (create) ─────────────────────────────────────────────────
 
     @Test

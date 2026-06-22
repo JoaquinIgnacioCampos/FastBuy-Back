@@ -32,6 +32,11 @@ public class OrdersController {
         return service.getOrdersByBar(bar);
     }
 
+    @GetMapping("/{id}")
+    public OrderResponse getOne(@PathVariable String id) {
+        return service.getOrder(parseId(id));
+    }
+
     @PostMapping("/{id}/advance")
     public OrderResponse advance(
             @PathVariable String id,
