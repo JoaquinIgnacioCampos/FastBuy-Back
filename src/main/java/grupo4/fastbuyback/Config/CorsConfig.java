@@ -9,9 +9,11 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class CorsConfig implements WebMvcConfigurer {
 
     private final BartenderAuthInterceptor bartenderAuth;
+    private final AdminAuthInterceptor adminAuth;
 
-    public CorsConfig(BartenderAuthInterceptor bartenderAuth) {
+    public CorsConfig(BartenderAuthInterceptor bartenderAuth, AdminAuthInterceptor adminAuth) {
         this.bartenderAuth = bartenderAuth;
+        this.adminAuth     = adminAuth;
     }
 
     @Override
@@ -36,5 +38,10 @@ public class CorsConfig implements WebMvcConfigurer {
                     "/orders/*/cancel",
                     "/orders/*/release"
                 );
+
+        // Payment-account writes (POST/DELETE) require an admin session token.
+        // GET is allowed by the interceptor's method check.
+        registry.addInterceptor(adminAuth)
+                .addPathPatterns("/events/*/payment-account");
     }
 }
