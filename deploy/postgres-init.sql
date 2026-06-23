@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS bartender_users (
     username      VARCHAR(100) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     bar_id        VARCHAR(50)  NOT NULL,
+    session_token VARCHAR(100),
     FOREIGN KEY (bar_id) REFERENCES bars(id)
 );
 
