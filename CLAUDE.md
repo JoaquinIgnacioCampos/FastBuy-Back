@@ -70,3 +70,12 @@ Spring Boot backend for FastBuy. Java 17, Maven wrapper (`mvnw`). Started via `s
 - `auto_return` is omitted in sandbox mode to avoid browser "too many redirects" error caused by MP's extra internal hops in the sandbox environment.
 - Test seller credentials are `APP_USR-` format (production-style, no `TEST-` token available from the developer panel for this account). Sandbox works using the test buyer's **account balance** — guest card payments (simulated test cards) are unreliable in MP sandbox Argentina with Checkout Pro. This is a known MP limitation, not a code issue.
 - Test buyer credentials are stored as comments in `application-local.properties` (gitignored). Do not commit them.
+
+### 2026-06-22 — Order responses, no-show cancel, single-order lookup, claim window (develop)
+- `OrderResponse` gained `barLabel` (friendly bar name, e.g. "Barra Norte"), resolved once per list call in `OrdersService` via `barsRepo.findById(barId)` (single shared bar id per list).
+- New `OrderState.CANCELLED` + `OrdersService.cancelOrder` (READY → CANCELLED) + `POST /orders/{id}/cancel` — a no-show drops off the active board and frees the bartender.
+- New `GET /orders/{id}` → `OrdersService.getOrder` returns a single order in any state (incl. delivered/cancelled), 404 if absent. Lets the customer view distinguish freed / cancelled / delivered.
+- PREPARING claim-expiry window widened **2 → 15 min** (`CLAIM_EXPIRY_MINUTES`); the 2-minute window reverted orders mid-preparation, breaking "Marcar listo" / "Liberar".
+- `OrdersControllerTest` now 32 tests (cancel, barLabel, single-order lookup, updated expiry).
+- The app is now hosted (Render backend + Cloudflare Pages frontend); the local `start-fastbuy.ps1` no longer uses ngrok.
+- These are on **develop**; not yet on **production**.
