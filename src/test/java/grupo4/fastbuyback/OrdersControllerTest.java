@@ -3,6 +3,7 @@ package grupo4.fastbuyback;
 import com.jayway.jsonpath.JsonPath;
 import grupo4.fastbuyback.Entities.OrderState;
 import grupo4.fastbuyback.Repositories.OrdersRepository;
+import grupo4.fastbuyback.Services.OrdersService;
 
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
@@ -59,6 +60,7 @@ class OrdersControllerTest {
 
     @Autowired private WebApplicationContext wac;
     @Autowired private OrdersRepository repo;
+    @Autowired private OrdersService ordersService;
 
     private MockMvc mockMvc;
 
@@ -288,6 +290,14 @@ class OrdersControllerTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void getOne_queuedOrder_hasQueuePosition() throws Exception {
+        mockMvc.perform(get("/orders/3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("queue")))
+                .andExpect(jsonPath("$.queuePosition", greaterThanOrEqualTo(1)));
+    }
+
     // ── POST /orders (create) ─────────────────────────────────────────────────
 
     @Test
@@ -388,6 +398,17 @@ class OrdersControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void createOrder_insufficientStock_returns422() throws Exception {
+        String body = """
+                {"items":[{"pid":"p5","q":99999}],"bar":"eclipse-center","total":1000}
+                """;
+        mockMvc.perform(post("/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnprocessableEntity());
+    }
+
     // ── Bartender locking ─────────────────────────────────────────────────────
 
     @Test
@@ -411,6 +432,9 @@ class OrdersControllerTest {
             o.setClaimedAt(LocalDateTime.now().minusMinutes(20));
             repo.save(o);
         });
+
+        // Expiry now runs as a scheduled sweep, not on read — trigger it explicitly.
+        ordersService.expireStaleClaims();
 
         mockMvc.perform(get("/orders").param("bar", "eclipse-north"))
                 .andExpect(status().isOk())
