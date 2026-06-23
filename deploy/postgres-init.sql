@@ -94,13 +94,16 @@ INSERT INTO categories (id, label, emoji) VALUES
     ('all',   'Todos',   '🍽️')
 ON CONFLICT (id) DO NOTHING;
 
--- Events. Live events (e1, e2) get a wide window so they stay live on a
--- persistent DB; e3/e4/e5 keep upcoming/finished states for badge variety.
+-- Events are anchored relative to NOW() so the seeded lineup classifies
+-- dynamically: e1/e2 run from earlier today into tonight (LIVE), e3 is
+-- tomorrow, e4 already finished (past the 6h grace → hidden), e5 far-future.
+-- On a persistent DB these drift over time — re-run deploy/reset-total.sql to
+-- re-anchor them to "today" before a demo. (Windows mirror the dev data.sql.)
 INSERT INTO events (id, name, venue, hours, starts_at, ends_at) VALUES
-    ('e1', 'Festival Eclipse',            'Costanera Sur · CABA',      '21:00 - 04:00', NOW() - INTERVAL '6 hours',  NOW() + INTERVAL '365 days'),
-    ('e2', 'Festival Cumbiero',           'Parque Sarmiento · CABA',   '20:00 - 03:00', NOW() - INTERVAL '3 hours',  NOW() + INTERVAL '365 days'),
+    ('e1', 'Festival Eclipse',            'Costanera Sur · CABA',      '21:00 - 04:00', NOW() - INTERVAL '6 hours',  NOW() + INTERVAL '12 hours'),
+    ('e2', 'Festival Cumbiero',           'Parque Sarmiento · CABA',   '20:00 - 03:00', NOW() - INTERVAL '3 hours',  NOW() + INTERVAL '9 hours'),
     ('e3', 'Cosquín Rock',                'Cosquín · Córdoba',         '18:00 - 02:00', NOW() + INTERVAL '1 day',    NOW() + INTERVAL '2 days'),
-    ('e4', 'Quilmes Rock',                'Tecnópolis · Buenos Aires', '17:00 - 23:00', NOW() - INTERVAL '10 hours', NOW() - INTERVAL '2 hours'),
+    ('e4', 'Quilmes Rock',                'Tecnópolis · Buenos Aires', '17:00 - 23:00', NOW() - INTERVAL '10 hours', NOW() - INTERVAL '8 hours'),
     ('e5', 'Lollapalooza Argentina 2027', 'Hipódromo de Palermo',      '14:00 - 23:00', NOW() + INTERVAL '300 days', NOW() + INTERVAL '303 days')
 ON CONFLICT (id) DO NOTHING;
 
