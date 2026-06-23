@@ -13,5 +13,6 @@ public record OrderResponse(
         String barLabel,
         String time,
         String claimedBy,
-        Integer queuePosition
+        Integer queuePosition,
+        Integer etaMinutes
 ) {}

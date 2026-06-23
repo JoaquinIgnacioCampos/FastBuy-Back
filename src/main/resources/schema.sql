@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS orders (
     status     VARCHAR(20)   NOT NULL,
     bar        VARCHAR(50)   NOT NULL,
     time       VARCHAR(10)   NOT NULL,
+    item_count INT           NOT NULL DEFAULT 0,
     claimed_by VARCHAR(100),
     claimed_at TIMESTAMP
 );

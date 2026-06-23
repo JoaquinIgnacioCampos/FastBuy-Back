@@ -23,6 +23,12 @@ public class Order {
     @Column(columnDefinition = "VARCHAR(2000)")
     private String items;   // stored as JSON string: [{"pid":"p1","q":2}]
 
+    // Denormalized total beverage quantity (sum of item q's), set at creation.
+    // Lets queue position / ETA be computed via a single SQL aggregate instead of
+    // parsing the items JSON of every order ahead on each status poll.
+    @Column(name = "item_count")
+    private int itemCount;
+
     @Enumerated(EnumType.STRING)
     private OrderState status;
 

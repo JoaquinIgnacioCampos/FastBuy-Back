@@ -47,6 +47,10 @@ public class OrdersService {
     // it (a 2-minute window reverted orders mid-preparation, breaking "mark ready").
     private static final long CLAIM_EXPIRY_MINUTES = 15;
 
+    // Rough prep time per beverage; the customer ETA scales with the number of
+    // items ahead (plus their own), not just the number of orders ahead.
+    private static final int PREP_SECONDS_PER_ITEM = 90;
+
     public List<OrderResponse> getOrdersByBar(String barId) {
         // All orders in this list share one bar, so resolve its label once.
         String barLabel = barLabelFor(barId);
@@ -141,11 +145,20 @@ public class OrdersService {
     public OrderResponse getOrder(Long id) {
         Order order = repo.findById(id)
             .orElseThrow(() -> new IllegalArgumentException("Order not found: " + id));
-        // 1-based position among QUEUE orders ahead of this one at the same bar.
-        Integer queuePosition = order.getStatus() == OrderState.QUEUE
-            ? repo.countByBarAndStatusAndIdLessThan(order.getBar(), OrderState.QUEUE, order.getId()) + 1
-            : null;
-        return toResponse(order, barLabelFor(order.getBar()), queuePosition);
+        // Position + ETA are only meaningful while the order is still waiting.
+        // One aggregate gives both: the position counts every order still ahead
+        // and not delivered (QUEUE+PREPARING+READY), while the ETA sums only the
+        // drinks still to be made (QUEUE+PREPARING) plus this order's own.
+        Integer queuePosition = null;
+        Integer etaMinutes = null;
+        if (order.getStatus() == OrderState.QUEUE) {
+            OrdersRepository.QueueAhead ahead =
+                repo.queueAhead(order.getBar(), ACTIVE_FOR_BAR_VIEW, ACTIVE_FOR_LOAD, order.getId());
+            queuePosition = (int) ahead.getOrdersAhead() + 1;
+            long itemsToMake = ahead.getItemsAhead() + order.getItemCount();
+            etaMinutes = Math.max(1, (int) Math.ceil(itemsToMake * PREP_SECONDS_PER_ITEM / 60.0));
+        }
+        return toResponse(order, barLabelFor(order.getBar()), queuePosition, etaMinutes);
     }
 
     @Transactional
@@ -167,6 +180,7 @@ public class OrdersService {
             order.setBar(barId);
             order.setStatus(OrderState.QUEUE);
             order.setItems(mapper.writeValueAsString(req.items()));
+            order.setItemCount(req.items().stream().mapToInt(ItemDto::q).sum());
             order.setTime(LocalTime.now().format(DateTimeFormatter.ofPattern("H:mm")));
             return toResponse(repo.save(order));
         } catch (IllegalStateException e) {
@@ -240,14 +254,14 @@ public class OrdersService {
     }
 
     private OrderResponse toResponse(Order order) {
-        return toResponse(order, barLabelFor(order.getBar()), null);
+        return toResponse(order, barLabelFor(order.getBar()), null, null);
     }
 
     private OrderResponse toResponse(Order order, String barLabel) {
-        return toResponse(order, barLabel, null);
+        return toResponse(order, barLabel, null, null);
     }
 
-    private OrderResponse toResponse(Order order, String barLabel, Integer queuePosition) {
+    private OrderResponse toResponse(Order order, String barLabel, Integer queuePosition, Integer etaMinutes) {
         try {
             List<ItemDto> items = mapper.readValue(
                 order.getItems(),
@@ -262,7 +276,8 @@ public class OrdersService {
                 barLabel,
                 order.getTime(),
                 order.getClaimedBy(),
-                queuePosition
+                queuePosition,
+                etaMinutes
             );
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse items for order " + order.getId(), e);
