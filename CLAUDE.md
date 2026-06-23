@@ -80,3 +80,12 @@ Spring Boot backend for FastBuy. Java 17, Maven wrapper (`mvnw`). Started via `s
 - The app is hosted (Render backend + Cloudflare Pages frontend). Locally, `start-fastbuy.ps1` still runs an ngrok tunnel so MP has a public return URL.
 - **MP `auto_return`** is only set when `fastbuy.web-origin` is `https://…` (`PaymentsService`). MP returns 400 (`auto_return invalid. back_url.success must be defined`) for a localhost back_url, which made local payments fail instantly — so local dev uses the ngrok https origin. Hosted prod uses `https://*.pages.dev`.
 - These are on **develop**; not yet on **production**.
+
+### 2026-06-22 — Code-review pass (develop)
+- **Auth on bartender writes.** `BartenderAuthInterceptor` requires `Authorization: Bearer <token>` on `/orders/*/advance|deliver|cancel|release` (registered in `CorsConfig.addInterceptors`; OPTIONS preflight passes). Login issues an opaque `session_token` (new column on `bartender_users`, stored via `AuthService`, returned in `LoginResponse`). Customer GETs and `POST /orders` stay open. Tests use an `authPost` helper with a seeded token.
+- **Stock.** `createOrder` is `@Transactional` and reserves stock with an atomic conditional decrement (`ProductsRepository.decrementStock`, `UPDATE … WHERE stock >= q`); insufficient → 422, rolled back.
+- **Lock expiry** is a `@Scheduled` (30s) bulk `UPDATE` (`OrdersRepository.expireStaleClaims`) — `@EnableScheduling` on the app; `GET /orders` no longer mutates.
+- **Queue position.** `getOrder` computes a 1-based `queuePosition` (`OrderResponse` field) for QUEUE orders.
+- **MP tokens encrypted at rest.** `PaymentAccountsService` encrypts/decrypts the per-event access token via a `TextEncryptor` bean (`SecurityConfig`); key/salt from `FASTBUY_TOKEN_KEY`/`FASTBUY_TOKEN_SALT` (dev default insecure — set in prod).
+- **MP token passed per-request** via `MPRequestOptions` (not the static `MercadoPagoConfig`) to avoid a concurrency race.
+- These are on **develop**; not yet on **production**.
