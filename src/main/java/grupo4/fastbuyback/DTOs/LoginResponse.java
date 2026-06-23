@@ -5,5 +5,6 @@ public record LoginResponse(
     String barId,
     String barLabel,
     String eventId,
-    String eventName
+    String eventName,
+    String token
 ) {}

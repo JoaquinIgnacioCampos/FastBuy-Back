@@ -2,7 +2,9 @@ package grupo4.fastbuyback;
 
 import com.jayway.jsonpath.JsonPath;
 import grupo4.fastbuyback.Entities.OrderState;
+import grupo4.fastbuyback.Repositories.BartenderUsersRepository;
 import grupo4.fastbuyback.Repositories.OrdersRepository;
+import grupo4.fastbuyback.Services.OrdersService;
 
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
@@ -59,6 +62,10 @@ class OrdersControllerTest {
 
     @Autowired private WebApplicationContext wac;
     @Autowired private OrdersRepository repo;
+    @Autowired private OrdersService ordersService;
+    @Autowired private BartenderUsersRepository bartenderUsers;
+
+    private static final String BARTENDER_TOKEN = "test-session-token";
 
     private MockMvc mockMvc;
 
@@ -68,6 +75,16 @@ class OrdersControllerTest {
                 .webAppContextSetup(wac)
                 .apply(SecurityMockMvcConfigurers.springSecurity())
                 .build();
+        // Give a seeded bartender a known token so gated write endpoints authenticate.
+        bartenderUsers.findAll().stream().findFirst().ifPresent(u -> {
+            u.setSessionToken(BARTENDER_TOKEN);
+            bartenderUsers.save(u);
+        });
+    }
+
+    /** POST carrying a valid bartender bearer token (required by gated write endpoints). */
+    private MockHttpServletRequestBuilder authPost(String url) {
+        return post(url).header("Authorization", "Bearer " + BARTENDER_TOKEN);
     }
 
     @AfterEach
@@ -150,9 +167,9 @@ class OrdersControllerTest {
     @Test
     void getOrders_deliveredOrdersAreFiltered() throws Exception {
         // Advance order 1 to READY, then deliver it
-        mockMvc.perform(post("/orders/1/advance"));
-        mockMvc.perform(post("/orders/1/advance"));
-        mockMvc.perform(post("/orders/1/deliver"));
+        mockMvc.perform(authPost("/orders/1/advance"));
+        mockMvc.perform(authPost("/orders/1/advance"));
+        mockMvc.perform(authPost("/orders/1/deliver"));
 
         mockMvc.perform(get("/orders").param("bar", "eclipse-north"))
                 .andExpect(jsonPath("$[*].id", not(hasItem("FB1"))));
@@ -161,7 +178,7 @@ class OrdersControllerTest {
     @Test
     void getOrders_deliveredStatus_returnsDeliveredOrders() throws Exception {
         // Deliver order 6 (eclipse-center, READY)
-        mockMvc.perform(post("/orders/6/deliver")).andExpect(status().isOk());
+        mockMvc.perform(authPost("/orders/6/deliver")).andExpect(status().isOk());
 
         mockMvc.perform(get("/orders").param("bar", "eclipse-center").param("status", "delivered"))
                 .andExpect(status().isOk())
@@ -172,7 +189,7 @@ class OrdersControllerTest {
 
     @Test
     void advanceOrder_queueToPreparing() throws Exception {
-        mockMvc.perform(post("/orders/1/advance"))
+        mockMvc.perform(authPost("/orders/1/advance"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id", is("FB1")))
                 .andExpect(jsonPath("$.status", is("preparing")));
@@ -180,7 +197,7 @@ class OrdersControllerTest {
 
     @Test
     void advanceOrder_preparingToReady() throws Exception {
-        mockMvc.perform(post("/orders/2/advance"))
+        mockMvc.perform(authPost("/orders/2/advance"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id", is("FB2")))
                 .andExpect(jsonPath("$.status", is("ready")));
@@ -189,21 +206,21 @@ class OrdersControllerTest {
     @Test
     void advanceOrder_fromReady_returns422() throws Exception {
         // Order 6 is eclipse-center READY
-        mockMvc.perform(post("/orders/6/advance"))
+        mockMvc.perform(authPost("/orders/6/advance"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error", notNullValue()));
     }
 
     @Test
     void advanceOrder_unknownId_returns404() throws Exception {
-        mockMvc.perform(post("/orders/9999/advance"))
+        mockMvc.perform(authPost("/orders/9999/advance"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error", notNullValue()));
     }
 
     @Test
     void advanceOrder_acceptsFbPrefixedId() throws Exception {
-        mockMvc.perform(post("/orders/FB1/advance"))
+        mockMvc.perform(authPost("/orders/FB1/advance"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id", is("FB1")))
                 .andExpect(jsonPath("$.status", is("preparing")));
@@ -214,7 +231,7 @@ class OrdersControllerTest {
     @Test
     void deliverOrder_readyToDelivered() throws Exception {
         // Order 6 is eclipse-center READY
-        mockMvc.perform(post("/orders/6/deliver"))
+        mockMvc.perform(authPost("/orders/6/deliver"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status", is("delivered")));
 
@@ -226,9 +243,74 @@ class OrdersControllerTest {
 
     @Test
     void deliverOrder_notReady_returns422() throws Exception {
-        mockMvc.perform(post("/orders/1/deliver"))
+        mockMvc.perform(authPost("/orders/1/deliver"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error", notNullValue()));
+    }
+
+    // ── POST /orders/{id}/cancel (no-show) ────────────────────────────────────
+
+    @Test
+    void cancelOrder_readyToCancelled() throws Exception {
+        // Order 6 is eclipse-center READY
+        mockMvc.perform(authPost("/orders/6/cancel"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("cancelled")));
+
+        // A cancelled order drops off the active board
+        mockMvc.perform(get("/orders").param("bar", "eclipse-center"))
+                .andExpect(jsonPath("$[*].id", not(hasItem("FB6"))));
+    }
+
+    @Test
+    void cancelOrder_notReady_returns422() throws Exception {
+        // Order 1 is QUEUE, only READY orders can be cancelled
+        mockMvc.perform(authPost("/orders/1/cancel"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error", notNullValue()));
+    }
+
+    // ── Friendly bar label ────────────────────────────────────────────────────
+
+    @Test
+    void responseShape_includesFriendlyBarLabel() throws Exception {
+        mockMvc.perform(get("/orders").param("bar", "eclipse-north"))
+                .andExpect(jsonPath("$[0].bar", is("eclipse-north")))
+                .andExpect(jsonPath("$[0].barLabel", is("Barra Norte")));
+    }
+
+    // ── GET /orders/{id} (single order, any state) ────────────────────────────
+
+    @Test
+    void getOne_returnsOrderWithStatus() throws Exception {
+        mockMvc.perform(get("/orders/6"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is("FB6")))
+                .andExpect(jsonPath("$.status", is("ready")));
+    }
+
+    @Test
+    void getOne_cancelledOrder_stillRetrievable() throws Exception {
+        // A cancelled order leaves the active board but stays fetchable by id,
+        // so the customer can be told it was cancelled.
+        mockMvc.perform(authPost("/orders/6/cancel")).andExpect(status().isOk());
+        mockMvc.perform(get("/orders/6"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("cancelled")));
+    }
+
+    @Test
+    void getOne_unknownId_returns404() throws Exception {
+        mockMvc.perform(get("/orders/9999"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getOne_queuedOrder_hasQueuePosition() throws Exception {
+        mockMvc.perform(get("/orders/3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("queue")))
+                .andExpect(jsonPath("$.queuePosition", greaterThanOrEqualTo(1)));
     }
 
     // ── POST /orders (create) ─────────────────────────────────────────────────
@@ -331,6 +413,17 @@ class OrdersControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void createOrder_insufficientStock_returns422() throws Exception {
+        String body = """
+                {"items":[{"pid":"p5","q":99999}],"bar":"eclipse-center","total":1000}
+                """;
+        mockMvc.perform(post("/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnprocessableEntity());
+    }
+
     // ── Bartender locking ─────────────────────────────────────────────────────
 
     @Test
@@ -338,7 +431,7 @@ class OrdersControllerTest {
         String body = """
                 {"bartenderId":"eclipse-north"}
                 """;
-        mockMvc.perform(post("/orders/1/advance")
+        mockMvc.perform(authPost("/orders/1/advance")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
@@ -348,12 +441,15 @@ class OrdersControllerTest {
 
     @Test
     void getOrders_expiredLock_resetsToQueue() throws Exception {
-        // Simulate a bartender that claimed order 2 three minutes ago and disconnected
+        // Simulate a bartender that claimed order 2 long ago (past the expiry window) and disconnected
         repo.findById(2L).ifPresent(o -> {
             o.setClaimedBy("eclipse-north");
-            o.setClaimedAt(LocalDateTime.now().minusMinutes(3));
+            o.setClaimedAt(LocalDateTime.now().minusMinutes(20));
             repo.save(o);
         });
+
+        // Expiry now runs as a scheduled sweep, not on read — trigger it explicitly.
+        ordersService.expireStaleClaims();
 
         mockMvc.perform(get("/orders").param("bar", "eclipse-north"))
                 .andExpect(status().isOk())
@@ -370,9 +466,16 @@ class OrdersControllerTest {
             repo.save(o);
         });
 
-        mockMvc.perform(post("/orders/2/release"))
+        mockMvc.perform(authPost("/orders/2/release"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status", is("queue")))
                 .andExpect(jsonPath("$.claimedBy", nullValue()));
+    }
+
+    @Test
+    void writeEndpoint_withoutToken_returns401() throws Exception {
+        // No Authorization header -> gated bartender write is rejected.
+        mockMvc.perform(post("/orders/1/advance"))
+                .andExpect(status().isUnauthorized());
     }
 }

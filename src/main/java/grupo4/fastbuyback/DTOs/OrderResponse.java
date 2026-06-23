@@ -10,6 +10,8 @@ public record OrderResponse(
         List<ItemDto> items,
         OrderState status,
         String bar,
+        String barLabel,
         String time,
-        String claimedBy
+        String claimedBy,
+        Integer queuePosition
 ) {}

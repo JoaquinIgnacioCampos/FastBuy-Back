@@ -7,4 +7,5 @@ import java.util.Optional;
 
 public interface BartenderUsersRepository extends JpaRepository<BartenderUser, String> {
     Optional<BartenderUser> findByUsername(String username);
+    Optional<BartenderUser> findBySessionToken(String sessionToken);
 }

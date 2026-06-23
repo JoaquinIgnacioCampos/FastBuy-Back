@@ -7,7 +7,8 @@ public enum OrderState {
     QUEUE,
     PREPARING,
     READY,
-    DELIVERED;
+    DELIVERED,
+    CANCELLED;
 
     @JsonValue
     public String toJson() {

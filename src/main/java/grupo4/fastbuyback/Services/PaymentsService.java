@@ -1,10 +1,10 @@
 package grupo4.fastbuyback.Services;
 
-import com.mercadopago.MercadoPagoConfig;
 import com.mercadopago.client.preference.PreferenceBackUrlsRequest;
 import com.mercadopago.client.preference.PreferenceClient;
 import com.mercadopago.client.preference.PreferenceItemRequest;
 import com.mercadopago.client.preference.PreferenceRequest;
+import com.mercadopago.core.MPRequestOptions;
 import com.mercadopago.exceptions.MPApiException;
 import com.mercadopago.exceptions.MPException;
 import com.mercadopago.resources.preference.Preference;
@@ -65,9 +65,11 @@ public class PaymentsService {
         }
 
         try {
-            MercadoPagoConfig.setAccessToken(token);
+            // Pass the token per-request (not via the global static MercadoPagoConfig)
+            // so concurrent payments with different per-event tokens can't race.
             PreferenceRequest prefRequest = buildSDKRequest(items, total, sessionRef);
-            Preference pref = new PreferenceClient().create(prefRequest);
+            MPRequestOptions options = MPRequestOptions.builder().accessToken(token).build();
+            Preference pref = new PreferenceClient().create(prefRequest, options);
 
             String checkoutUrl = sandbox ? pref.getSandboxInitPoint() : pref.getInitPoint();
             log.info("MP preference created: id={} sandbox={} url={}", pref.getId(), sandbox, checkoutUrl);
@@ -105,8 +107,11 @@ public class PaymentsService {
                         .build())
                 .externalReference(sessionRef);
 
-        // auto_return causes too-many-redirects in sandbox due to extra MP hops
-        if (!sandbox) builder.autoReturn("approved");
+        // auto_return needs a public back_url — MP rejects localhost/non-https with
+        // "auto_return invalid. back_url.success must be defined" (400). For local
+        // http origins we skip it; the customer returns via MP's "Volver al sitio"
+        // button instead. (Also skipped in sandbox, where extra MP hops loop.)
+        if (!sandbox && webOrigin.startsWith("https://")) builder.autoReturn("approved");
 
         return builder.build();
     }

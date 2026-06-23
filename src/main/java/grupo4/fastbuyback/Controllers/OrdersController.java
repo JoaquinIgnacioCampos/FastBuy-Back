@@ -32,6 +32,11 @@ public class OrdersController {
         return service.getOrdersByBar(bar);
     }
 
+    @GetMapping("/{id}")
+    public OrderResponse getOne(@PathVariable String id) {
+        return service.getOrder(parseId(id));
+    }
+
     @PostMapping("/{id}/advance")
     public OrderResponse advance(
             @PathVariable String id,
@@ -47,6 +52,11 @@ public class OrdersController {
     @PostMapping("/{id}/deliver")
     public OrderResponse deliver(@PathVariable String id) {
         return service.deliverOrder(parseId(id));
+    }
+
+    @PostMapping("/{id}/cancel")
+    public OrderResponse cancel(@PathVariable String id) {
+        return service.cancelOrder(parseId(id));
     }
 
     // Phase 2 — Order creation

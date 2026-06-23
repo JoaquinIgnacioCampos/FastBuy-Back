@@ -12,7 +12,9 @@ import grupo4.fastbuyback.Entities.Product;
 import grupo4.fastbuyback.Repositories.BarsRepository;
 import grupo4.fastbuyback.Repositories.OrdersRepository;
 import grupo4.fastbuyback.Repositories.ProductsRepository;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -32,7 +34,7 @@ public class OrdersService {
     private final OrdersRepository repo;
     private final BarsRepository barsRepo;
     private final ProductsRepository productsRepo;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private static final ObjectMapper mapper = new ObjectMapper();
 
     public OrdersService(OrdersRepository repo, BarsRepository barsRepo, ProductsRepository productsRepo) {
         this.repo = repo;
@@ -40,27 +42,36 @@ public class OrdersService {
         this.productsRepo = productsRepo;
     }
 
-    public List<OrderResponse> getOrdersByBar(String barId) {
-        // Lazy expiry: any PREPARING order whose lock is older than 2 minutes returns to QUEUE
-        LocalDateTime expiry = LocalDateTime.now().minusMinutes(2);
-        List<Order> expired = repo.findByBarAndStatusAndClaimedAtBefore(barId, OrderState.PREPARING, expiry);
-        for (Order o : expired) {
-            o.setStatus(OrderState.QUEUE);
-            o.setClaimedBy(null);
-            o.setClaimedAt(null);
-            repo.save(o);
-        }
+    // A claimed PREPARING order is only auto-released back to QUEUE after this long
+    // with no progress — long enough that an actively-working bartender never trips
+    // it (a 2-minute window reverted orders mid-preparation, breaking "mark ready").
+    private static final long CLAIM_EXPIRY_MINUTES = 15;
 
+    public List<OrderResponse> getOrdersByBar(String barId) {
+        // All orders in this list share one bar, so resolve its label once.
+        String barLabel = barLabelFor(barId);
         return repo.findByBarAndStatusInOrderByIdAsc(barId, ACTIVE_FOR_BAR_VIEW)
                    .stream()
-                   .map(this::toResponse)
+                   .map(o -> toResponse(o, barLabel))
                    .toList();
     }
 
+    /**
+     * Background sweep: frees PREPARING orders whose lock is older than the window
+     * back to QUEUE so another bartender can take them. Runs independently of read
+     * traffic (one bulk UPDATE every 30s) rather than on every GET.
+     */
+    @Scheduled(fixedDelay = 30_000)
+    @Transactional
+    public void expireStaleClaims() {
+        repo.expireStaleClaims(LocalDateTime.now().minusMinutes(CLAIM_EXPIRY_MINUTES));
+    }
+
     public List<OrderResponse> getDeliveredByBar(String barId) {
+        String barLabel = barLabelFor(barId);
         return repo.findTop50ByBarAndStatusOrderByIdDesc(barId, OrderState.DELIVERED)
                    .stream()
-                   .map(this::toResponse)
+                   .map(o -> toResponse(o, barLabel))
                    .toList();
     }
 
@@ -110,11 +121,46 @@ public class OrdersService {
         return toResponse(repo.save(order));
     }
 
+    public OrderResponse cancelOrder(Long id) {
+        Order order = repo.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("Order not found: " + id));
+
+        if (order.getStatus() != OrderState.READY) {
+            throw new IllegalStateException("Only READY orders can be cancelled, current status: " + order.getStatus());
+        }
+
+        // No-show: the customer never came to pick up. Drop the order off the
+        // active board (and free the bartender) via a terminal CANCELLED state.
+        order.setStatus(OrderState.CANCELLED);
+        order.setClaimedBy(null);
+        order.setClaimedAt(null);
+        return toResponse(repo.save(order));
+    }
+
+    /** Single order by id, in any state (queue/preparing/ready/delivered/cancelled). */
+    public OrderResponse getOrder(Long id) {
+        Order order = repo.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("Order not found: " + id));
+        // 1-based position among QUEUE orders ahead of this one at the same bar.
+        Integer queuePosition = order.getStatus() == OrderState.QUEUE
+            ? repo.countByBarAndStatusAndIdLessThan(order.getBar(), OrderState.QUEUE, order.getId()) + 1
+            : null;
+        return toResponse(order, barLabelFor(order.getBar()), queuePosition);
+    }
+
+    @Transactional
     public OrderResponse createOrder(CreateOrderRequest req) {
         try {
             String barId = (req.bar() == null || req.bar().isBlank())
                     ? pickLeastLoadedBar(req.items(), req.eventId())
                     : req.bar();
+
+            // Reserve stock atomically up-front; insufficient stock rolls back the whole order.
+            for (ItemDto item : req.items()) {
+                if (productsRepo.decrementStock(item.pid(), item.q()) == 0) {
+                    throw new IllegalStateException("Sin stock suficiente para " + item.pid());
+                }
+            }
 
             Order order = new Order();
             order.setTotal(req.total());
@@ -194,6 +240,14 @@ public class OrdersService {
     }
 
     private OrderResponse toResponse(Order order) {
+        return toResponse(order, barLabelFor(order.getBar()), null);
+    }
+
+    private OrderResponse toResponse(Order order, String barLabel) {
+        return toResponse(order, barLabel, null);
+    }
+
+    private OrderResponse toResponse(Order order, String barLabel, Integer queuePosition) {
         try {
             List<ItemDto> items = mapper.readValue(
                 order.getItems(),
@@ -205,11 +259,18 @@ public class OrdersService {
                 items,
                 order.getStatus(),
                 order.getBar(),
+                barLabel,
                 order.getTime(),
-                order.getClaimedBy()
+                order.getClaimedBy(),
+                queuePosition
             );
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse items for order " + order.getId(), e);
         }
+    }
+
+    /** Friendly bar name (e.g. "Barra Norte") for a bar id; falls back to the id. */
+    private String barLabelFor(String barId) {
+        return barsRepo.findById(barId).map(Bar::getLabel).orElse(barId);
     }
 }
