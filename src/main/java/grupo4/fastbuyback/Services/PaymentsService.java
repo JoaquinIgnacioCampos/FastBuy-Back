@@ -105,8 +105,11 @@ public class PaymentsService {
                         .build())
                 .externalReference(sessionRef);
 
-        // auto_return causes too-many-redirects in sandbox due to extra MP hops
-        if (!sandbox) builder.autoReturn("approved");
+        // auto_return needs a public back_url — MP rejects localhost/non-https with
+        // "auto_return invalid. back_url.success must be defined" (400). For local
+        // http origins we skip it; the customer returns via MP's "Volver al sitio"
+        // button instead. (Also skipped in sandbox, where extra MP hops loop.)
+        if (!sandbox && webOrigin.startsWith("https://")) builder.autoReturn("approved");
 
         return builder.build();
     }
