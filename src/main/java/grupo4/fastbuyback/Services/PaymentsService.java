@@ -1,10 +1,10 @@
 package grupo4.fastbuyback.Services;
 
-import com.mercadopago.MercadoPagoConfig;
 import com.mercadopago.client.preference.PreferenceBackUrlsRequest;
 import com.mercadopago.client.preference.PreferenceClient;
 import com.mercadopago.client.preference.PreferenceItemRequest;
 import com.mercadopago.client.preference.PreferenceRequest;
+import com.mercadopago.core.MPRequestOptions;
 import com.mercadopago.exceptions.MPApiException;
 import com.mercadopago.exceptions.MPException;
 import com.mercadopago.resources.preference.Preference;
@@ -65,9 +65,11 @@ public class PaymentsService {
         }
 
         try {
-            MercadoPagoConfig.setAccessToken(token);
+            // Pass the token per-request (not via the global static MercadoPagoConfig)
+            // so concurrent payments with different per-event tokens can't race.
             PreferenceRequest prefRequest = buildSDKRequest(items, total, sessionRef);
-            Preference pref = new PreferenceClient().create(prefRequest);
+            MPRequestOptions options = MPRequestOptions.builder().accessToken(token).build();
+            Preference pref = new PreferenceClient().create(prefRequest, options);
 
             String checkoutUrl = sandbox ? pref.getSandboxInitPoint() : pref.getInitPoint();
             log.info("MP preference created: id={} sandbox={} url={}", pref.getId(), sandbox, checkoutUrl);

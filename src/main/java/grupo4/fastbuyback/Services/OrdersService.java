@@ -32,7 +32,7 @@ public class OrdersService {
     private final OrdersRepository repo;
     private final BarsRepository barsRepo;
     private final ProductsRepository productsRepo;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private static final ObjectMapper mapper = new ObjectMapper();
 
     public OrdersService(OrdersRepository repo, BarsRepository barsRepo, ProductsRepository productsRepo) {
         this.repo = repo;
