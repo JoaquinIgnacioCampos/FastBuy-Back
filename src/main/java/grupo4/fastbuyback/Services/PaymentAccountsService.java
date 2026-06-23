@@ -6,6 +6,7 @@ import grupo4.fastbuyback.Entities.PaymentAccount;
 import grupo4.fastbuyback.Repositories.EventsRepository;
 import grupo4.fastbuyback.Repositories.PaymentAccountsRepository;
 import org.springframework.http.HttpHeaders;
+import org.springframework.security.crypto.encrypt.TextEncryptor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
@@ -23,12 +24,15 @@ public class PaymentAccountsService {
 
     private final PaymentAccountsRepository repo;
     private final EventsRepository eventsRepo;
+    private final TextEncryptor encryptor;
     private final RestClient http;
 
     public PaymentAccountsService(PaymentAccountsRepository repo,
-                                  EventsRepository eventsRepo) {
+                                  EventsRepository eventsRepo,
+                                  TextEncryptor encryptor) {
         this.repo      = repo;
         this.eventsRepo = eventsRepo;
+        this.encryptor = encryptor;
         this.http      = RestClient.create();
     }
 
@@ -37,7 +41,7 @@ public class PaymentAccountsService {
         if (opt.isEmpty()) return PaymentAccountResponse.unlinked();
 
         PaymentAccount pa = opt.get();
-        String email = fetchMpEmail(pa.getAccessToken());
+        String email = fetchMpEmail(encryptor.decrypt(pa.getAccessToken()));
         return new PaymentAccountResponse(true, pa.getMpUserId(), email, pa.getLinkedAt());
     }
 
@@ -57,7 +61,7 @@ public class PaymentAccountsService {
             return n;
         });
 
-        pa.setAccessToken(accessToken);
+        pa.setAccessToken(encryptor.encrypt(accessToken));
         pa.setMpUserId(mpUserId);
         pa.setLinkedAt(LocalDateTime.now());
         repo.save(pa);
@@ -72,7 +76,7 @@ public class PaymentAccountsService {
 
     /** Returns the access token for an event, or null if not linked. */
     public Optional<String> getTokenForEvent(String eventId) {
-        return repo.findByEventId(eventId).map(PaymentAccount::getAccessToken);
+        return repo.findByEventId(eventId).map(pa -> encryptor.decrypt(pa.getAccessToken()));
     }
 
     @SuppressWarnings("unchecked")
