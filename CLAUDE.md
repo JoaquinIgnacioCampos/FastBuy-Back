@@ -77,5 +77,6 @@ Spring Boot backend for FastBuy. Java 17, Maven wrapper (`mvnw`). Started via `s
 - New `GET /orders/{id}` → `OrdersService.getOrder` returns a single order in any state (incl. delivered/cancelled), 404 if absent. Lets the customer view distinguish freed / cancelled / delivered.
 - PREPARING claim-expiry window widened **2 → 15 min** (`CLAIM_EXPIRY_MINUTES`); the 2-minute window reverted orders mid-preparation, breaking "Marcar listo" / "Liberar".
 - `OrdersControllerTest` now 32 tests (cancel, barLabel, single-order lookup, updated expiry).
-- The app is now hosted (Render backend + Cloudflare Pages frontend); the local `start-fastbuy.ps1` no longer uses ngrok.
+- The app is hosted (Render backend + Cloudflare Pages frontend). Locally, `start-fastbuy.ps1` still runs an ngrok tunnel so MP has a public return URL.
+- **MP `auto_return`** is only set when `fastbuy.web-origin` is `https://…` (`PaymentsService`). MP returns 400 (`auto_return invalid. back_url.success must be defined`) for a localhost back_url, which made local payments fail instantly — so local dev uses the ngrok https origin. Hosted prod uses `https://*.pages.dev`.
 - These are on **develop**; not yet on **production**.
