@@ -74,6 +74,15 @@ CREATE TABLE IF NOT EXISTS bartender_users (
     FOREIGN KEY (bar_id) REFERENCES bars(id)
 );
 
+CREATE TABLE IF NOT EXISTS admin_users (
+    id            VARCHAR(50)  NOT NULL PRIMARY KEY,
+    username      VARCHAR(100) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    event_id      VARCHAR(50)  NOT NULL,
+    session_token VARCHAR(100),
+    FOREIGN KEY (event_id) REFERENCES events(id)
+);
+
 CREATE TABLE IF NOT EXISTS payment_accounts (
     id            VARCHAR(50)  NOT NULL PRIMARY KEY,
     event_id      VARCHAR(50)  NOT NULL UNIQUE,
