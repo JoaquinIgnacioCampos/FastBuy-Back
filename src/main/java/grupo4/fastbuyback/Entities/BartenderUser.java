@@ -24,4 +24,8 @@ public class BartenderUser {
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "bar_id", nullable = false)
     private Bar bar;
+
+    /** Opaque bearer token issued at login; authorizes this bartender's write calls. */
+    @Column(name = "session_token")
+    private String sessionToken;
 }

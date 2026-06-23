@@ -8,6 +8,8 @@ import grupo4.fastbuyback.Repositories.BartenderUsersRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.UUID;
+
 @Service
 public class AuthService {
 
@@ -27,13 +29,19 @@ public class AuthService {
             throw new IllegalArgumentException("Invalid credentials");
         }
 
+        // Issue a fresh opaque session token; gated write endpoints check it.
+        String token = UUID.randomUUID().toString();
+        user.setSessionToken(token);
+        repo.save(user);
+
         Bar bar = user.getBar();
         return new LoginResponse(
             user.getUsername(),
             bar.getId(),
             bar.getLabel(),
             bar.getEventId(),
-            bar.getEvent().getName()
+            bar.getEvent().getName(),
+            token
         );
     }
 }
