@@ -12,8 +12,6 @@ INSERT INTO events (id, name, venue, hours, starts_at, ends_at) VALUES
 INSERT INTO events (id, name, venue, hours, starts_at, ends_at) VALUES
     ('e3',  'Cosquín Rock',                'Cosquín · Córdoba',            '18:00 - 02:00', DATEADD('DAY',  1,   CURRENT_TIMESTAMP), DATEADD('DAY',  2,   CURRENT_TIMESTAMP));
 INSERT INTO events (id, name, venue, hours, starts_at, ends_at) VALUES
-    ('e4',  'Quilmes Rock',                'Tecnópolis · Buenos Aires',    '17:00 - 23:00', DATEADD('HOUR', -10, CURRENT_TIMESTAMP), DATEADD('HOUR', -2,  CURRENT_TIMESTAMP));
-INSERT INTO events (id, name, venue, hours, starts_at, ends_at) VALUES
     ('e5',  'Lollapalooza Argentina 2027', 'Hipódromo de Palermo',         '14:00 - 23:00', DATEADD('DAY',  300, CURRENT_TIMESTAMP), DATEADD('DAY',  303, CURRENT_TIMESTAMP));
 
 -- Bars for Eclipse (e1) — 3 bars, full festival setup

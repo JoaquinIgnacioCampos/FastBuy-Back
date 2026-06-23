@@ -18,7 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * Products: p1–p15 (Eclipse), p16–p23 (Cumbiero), p_test = 24 total
  * Bars: eclipse-north, eclipse-center, eclipse-south, cumbia-main, cumbia-vip = 5 total
- * Events visible: e1 (live), e2 (live), e3 (upcoming), e4 (recently finished, within 6h grace), e5 (far future)
+ * Events visible: e1 (live), e2 (live), e3 (upcoming), e5 (far future)
  */
 @SpringBootTest
 class DataEndpointsTest {
@@ -208,13 +208,13 @@ class DataEndpointsTest {
     }
 
     // ── /events ───────────────────────────────────────────────────────────────
-    // Active/visible: e1 (live), e2 (live), e3 (upcoming), e4 (recently finished, within 6h grace), e5 (far future)
+    // Active/visible: e1 (live), e2 (live), e3 (upcoming), e5 (far future)
 
     @Test
-    void getEvents_returns5VisibleEvents() throws Exception {
+    void getEvents_returns4VisibleEvents() throws Exception {
         mockMvc.perform(get("/events"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(5)));
+                .andExpect(jsonPath("$", hasSize(4)));
     }
 
     @Test
@@ -228,12 +228,6 @@ class DataEndpointsTest {
     void getEvents_excludesFinalizedBeyondGrace() throws Exception {
         mockMvc.perform(get("/events"))
                 .andExpect(jsonPath("$[*].name", not(hasItem("Lollapalooza Argentina 2025"))));
-    }
-
-    @Test
-    void getEvents_includesRecentlyFinishedWithinGrace() throws Exception {
-        mockMvc.perform(get("/events"))
-                .andExpect(jsonPath("$[*].name", hasItem("Quilmes Rock")));
     }
 
     @Test
