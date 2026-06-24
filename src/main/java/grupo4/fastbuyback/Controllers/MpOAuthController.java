@@ -3,6 +3,8 @@ package grupo4.fastbuyback.Controllers;
 import grupo4.fastbuyback.Config.OAuthStateStore;
 import grupo4.fastbuyback.Repositories.AdminUsersRepository;
 import grupo4.fastbuyback.Services.PaymentAccountsService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -24,8 +26,9 @@ import java.util.Map;
 /**
  * Mercado Pago OAuth seller-onboarding flow.
  *
- * GET /auth/mp/connect  — validates the admin session, then redirects the
- *                         browser to MP's authorization page.
+ * GET /auth/mp/connect  — validates the admin session, returns {"url":"..."} JSON.
+ *                         The frontend navigates window.location.href to that URL
+ *                         so the Vite dev-proxy never sees the redirect.
  * GET /auth/mp/callback — MP redirects here with ?code + ?state; the code is
  *                         exchanged for an access token and stored via the
  *                         existing PaymentAccountsService.linkEvent().
@@ -38,6 +41,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/auth/mp")
 public class MpOAuthController {
+
+    private static final Logger log = LoggerFactory.getLogger(MpOAuthController.class);
 
     private final OAuthStateStore stateStore;
     private final AdminUsersRepository adminRepo;
@@ -59,16 +64,18 @@ public class MpOAuthController {
     }
 
     /**
-     * Initiates the OAuth flow. The admin panel navigates here; the browser is
-     * redirected to Mercado Pago's authorization page.
+     * Returns the MP authorization URL as JSON so the frontend can navigate
+     * directly. Returning a 302 here would cause the Vite dev-proxy to attempt
+     * to proxy the external MP URL, which fails.
      */
     @GetMapping("/connect")
-    public ResponseEntity<Void> connect(
+    public ResponseEntity<Map<String, String>> connect(
             @RequestParam String eventId,
             @RequestParam String token) {
 
         if (appId.isBlank() || redirectUri.isBlank()) {
-            return redirect(frontendUrl + "/admin?mp_error=not_configured");
+            log.warn("MP OAuth not configured: MP_APP_ID or MP_REDIRECT_URI is blank");
+            return ResponseEntity.ok(Map.of("error", "not_configured"));
         }
 
         adminRepo.findBySessionToken(token)
@@ -84,12 +91,14 @@ public class MpOAuthController {
                 + "&state="         + state
                 + "&redirect_uri="  + encode(redirectUri);
 
-        return redirect(authUrl);
+        log.info("MP OAuth: redirecting eventId={} to MP auth", eventId);
+        return ResponseEntity.ok(Map.of("url", authUrl));
     }
 
     /**
      * MP redirects here after the seller approves (or cancels) access.
-     * Exchanges the code, stores the token, and redirects back to the frontend.
+     * Any failure redirects to the frontend with an error code instead of
+     * throwing a 500 whitelabel page.
      */
     @GetMapping("/callback")
     public ResponseEntity<Void> callback(
@@ -98,17 +107,25 @@ public class MpOAuthController {
             @RequestParam(required = false, defaultValue = "") String error) {
 
         if (!error.isBlank() || code == null || state == null) {
+            log.info("MP OAuth callback: access denied or missing params (error={})", error);
             return redirect(frontendUrl + "/admin?mp_error=access_denied");
         }
 
-        String eventId = stateStore.consume(state)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST, "Invalid or expired OAuth state"));
+        try {
+            String eventId = stateStore.consume(state)
+                    .orElseThrow(() -> new IllegalArgumentException("Invalid or expired OAuth state: " + state));
 
-        String accessToken = exchangeCode(code);
-        paymentAccountsService.linkEvent(eventId, accessToken);
+            log.info("MP OAuth callback: exchanging code for eventId={}", eventId);
+            String accessToken = exchangeCode(code);
+            paymentAccountsService.linkEvent(eventId, accessToken);
+            log.info("MP OAuth callback: linked account for eventId={}", eventId);
 
-        return redirect(frontendUrl + "/admin?mp_linked=true");
+            return redirect(frontendUrl + "/admin?mp_linked=true");
+
+        } catch (Exception e) {
+            log.error("MP OAuth callback failed: {}", e.getMessage(), e);
+            return redirect(frontendUrl + "/admin?mp_error=callback_failed");
+        }
     }
 
     // ── private helpers ────────────────────────────────────────────────────────
@@ -122,25 +139,16 @@ public class MpOAuthController {
         params.add("code",          code);
         params.add("redirect_uri",  redirectUri);
 
-        try {
-            Map<String, Object> body = http.post()
-                    .uri("https://api.mercadopago.com/oauth/token")
-                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                    .body(params)
-                    .retrieve()
-                    .body(Map.class);
+        Map<String, Object> body = http.post()
+                .uri("https://api.mercadopago.com/oauth/token")
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .body(params)
+                .retrieve()
+                .body(Map.class);
 
-            Object token = body != null ? body.get("access_token") : null;
-            if (token == null) throw new ResponseStatusException(
-                    HttpStatus.BAD_GATEWAY, "MP returned no access_token");
-            return String.valueOf(token);
-
-        } catch (ResponseStatusException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_GATEWAY, "OAuth token exchange failed: " + e.getMessage());
-        }
+        Object tkn = body != null ? body.get("access_token") : null;
+        if (tkn == null) throw new IllegalStateException("MP returned no access_token in exchange response");
+        return String.valueOf(tkn);
     }
 
     private static ResponseEntity<Void> redirect(String url) {
