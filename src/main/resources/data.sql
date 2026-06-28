@@ -52,8 +52,10 @@ INSERT INTO products (id, name, category, price, stock, image, emoji, subtitle) 
 INSERT INTO products (id, name, category, price, stock, image, emoji, subtitle) VALUES ('p22', 'Choripán',              'food',  9000,  25, '🥖', '🥖', 'Pan brioche + chimichurri');
 INSERT INTO products (id, name, category, price, stock, image, emoji, subtitle) VALUES ('p23', 'Tabla de fiambres',     'snack', 14000, 15, '🪵', '🪵', '2 personas · surtida');
 
--- MP test product (dev-only, served at all bars)
-INSERT INTO products (id, name, category, price, stock, image, emoji, subtitle) VALUES ('p_test', 'Test MP $5',  'drink', 5, 999, '🧪', '🧪', 'Dev only · real MP charge');
+-- Dev-only test products (stock edge cases + MP payment)
+INSERT INTO products (id, name, category, price, stock, image, emoji, subtitle) VALUES ('p_test',     'Test MP $5',       'drink', 5, 999, '🧪', '🧪', 'Dev only · real MP charge');
+INSERT INTO products (id, name, category, price, stock, image, emoji, subtitle) VALUES ('p_test_low', 'Test Stock 1',     'drink', 5,   1, '🔴', '🔴', 'Dev only · 1 unidad disponible');
+INSERT INTO products (id, name, category, price, stock, image, emoji, subtitle) VALUES ('p_test_oos', 'Test Sin Stock',   'drink', 5,   0, '⛔', '⛔', 'Dev only · sin stock');
 
 -- Eclipse bar ↔ products
 -- eclipse-north: standard drinks + most food/snacks
@@ -69,6 +71,8 @@ INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-north', 'p11');
 INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-north', 'p12');
 INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-north', 'p13');
 INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-north', 'p_test');
+INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-north', 'p_test_low');
+INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-north', 'p_test_oos');
 
 -- eclipse-center: premium beers + most food
 INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-center', 'p1');
@@ -82,6 +86,8 @@ INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-center', 'p10');
 INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-center', 'p12');
 INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-center', 'p13');
 INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-center', 'p_test');
+INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-center', 'p_test_low');
+INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-center', 'p_test_oos');
 
 -- eclipse-south (VIP): premium drinks + VIP exclusives
 INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-south', 'p2');
@@ -93,6 +99,8 @@ INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-south', 'p13');
 INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-south', 'p14');
 INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-south', 'p15');
 INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-south', 'p_test');
+INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-south', 'p_test_low');
+INSERT INTO bar_products (bar_id, product_id) VALUES ('eclipse-south', 'p_test_oos');
 
 -- Cumbiero bar ↔ products
 -- cumbia-main: fernet, wine, sangría + food
@@ -103,6 +111,8 @@ INSERT INTO bar_products (bar_id, product_id) VALUES ('cumbia-main', 'p20');
 INSERT INTO bar_products (bar_id, product_id) VALUES ('cumbia-main', 'p21');
 INSERT INTO bar_products (bar_id, product_id) VALUES ('cumbia-main', 'p22');
 INSERT INTO bar_products (bar_id, product_id) VALUES ('cumbia-main', 'p_test');
+INSERT INTO bar_products (bar_id, product_id) VALUES ('cumbia-main', 'p_test_low');
+INSERT INTO bar_products (bar_id, product_id) VALUES ('cumbia-main', 'p_test_oos');
 
 -- cumbia-vip: artisan beer + premium + food tabla
 INSERT INTO bar_products (bar_id, product_id) VALUES ('cumbia-vip', 'p16');
@@ -113,6 +123,8 @@ INSERT INTO bar_products (bar_id, product_id) VALUES ('cumbia-vip', 'p21');
 INSERT INTO bar_products (bar_id, product_id) VALUES ('cumbia-vip', 'p22');
 INSERT INTO bar_products (bar_id, product_id) VALUES ('cumbia-vip', 'p23');
 INSERT INTO bar_products (bar_id, product_id) VALUES ('cumbia-vip', 'p_test');
+INSERT INTO bar_products (bar_id, product_id) VALUES ('cumbia-vip', 'p_test_low');
+INSERT INTO bar_products (bar_id, product_id) VALUES ('cumbia-vip', 'p_test_oos');
 
 -- Sample orders
 -- eclipse-north: 4 QUEUE orders to demonstrate oldest-first lock + disabled buttons
