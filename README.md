@@ -1,74 +1,74 @@
 # FastBuy — Backend
 
-Spring Boot REST API for FastBuy, an event-based beverage ordering system. Manages the full order lifecycle — from catalog browsing to queue management and Mercado Pago payment processing — for multiple concurrent events and bars.
+API REST en Spring Boot para FastBuy, un sistema de pedidos de bebidas para eventos. Gestiona el ciclo de vida completo de los pedidos — desde la navegación del catálogo hasta la gestión de la cola y el procesamiento de pagos con Mercado Pago — para múltiples eventos y barras simultáneas.
 
-- **Frontend repo:** [FastBuy-Front](https://github.com/JoaquinIgnacioCampos/FastBuy-Front)
-- **Prod URL:** hosted on Render (free tier)
+- **Repo del frontend:** [FastBuy-Front](https://github.com/JoaquinIgnacioCampos/FastBuy-Front)
+- **URL de producción:** alojado en Render (tier gratuito)
 
 ---
 
-## Tech stack
+## Stack tecnológico
 
-| Layer | Tech |
-|-------|------|
+| Capa | Tecnología |
+|------|-----------|
 | Framework | Spring Boot 4.0.6 |
-| Language | Java 17 |
+| Lenguaje | Java 17 |
 | ORM | Spring Data JPA / Hibernate |
-| Dev DB | H2 (in-memory, auto-reset on restart) |
-| Prod DB | Neon Postgres (persistent) |
-| Auth | BCrypt + opaque session tokens |
-| Payments | Mercado Pago Checkout Pro |
+| DB dev | H2 (en memoria, se resetea al reiniciar) |
+| DB prod | Neon Postgres (persistente) |
+| Autenticación | BCrypt + tokens de sesión opacos |
+| Pagos | Mercado Pago Checkout Pro |
 
 ---
 
-## Project structure
+## Estructura del proyecto
 
 ```
 src/main/java/grupo4/fastbuyback/
-├── Controllers/      # REST endpoints
+├── Controllers/      # Endpoints REST
 │   ├── AuthController          POST /auth/bartender/login, /auth/admin/login
-│   ├── OrdersController        CRUD + state transitions for orders
-│   ├── EventsController        GET /events, per-event menu + bars
+│   ├── OrdersController        CRUD + transiciones de estado de pedidos
+│   ├── EventsController        GET /events, menú y barras por evento
 │   ├── BarsController          GET /bars
 │   ├── ProductsController      GET /products
 │   ├── CategoriesController    GET /categories
 │   ├── PaymentsController      POST /payments/preference
 │   └── PaymentAccountsController GET/POST/DELETE /events/:id/payment-account
-├── Services/         # Business logic
-│   ├── OrdersService           Assignment, queue position, ETA calculation
-│   ├── AuthService             BCrypt login, session token issuance
-│   ├── PaymentsService         Mercado Pago preference creation, per-event token routing
-│   └── PaymentAccountsService  Seller token validation + encrypted storage
-├── Entities/         # JPA entities (Order, Bar, Event, Product, BartenderUser, AdminUser, …)
-├── Repositories/     # Spring Data interfaces
-├── DTOs/             # Request/response records
+├── Services/         # Lógica de negocio
+│   ├── OrdersService           Asignación, posición en cola, cálculo de ETA
+│   ├── AuthService             Login BCrypt, emisión de tokens de sesión
+│   ├── PaymentsService         Creación de preferencia MP, ruteo de token por evento
+│   └── PaymentAccountsService  Validación y almacenamiento encriptado del token de vendedor
+├── Entities/         # Entidades JPA (Order, Bar, Event, Product, BartenderUser, AdminUser, …)
+├── Repositories/     # Interfaces de Spring Data
+├── DTOs/             # Records de request/response
 └── Config/
-    ├── DataInitializer         Seeds bartender + admin users (BCrypt) on first boot
-    ├── BartenderAuthInterceptor Bearer token gate for order write endpoints
-    ├── AdminAuthInterceptor    Bearer token gate for payment-account writes
-    └── CorsConfig              CORS + interceptor registration
+    ├── DataInitializer         Seed de bartenders y admins (BCrypt) al iniciar
+    ├── BartenderAuthInterceptor Gate de token Bearer para endpoints de escritura de pedidos
+    ├── AdminAuthInterceptor    Gate de token Bearer para escrituras de cuenta de pago
+    └── CorsConfig              CORS + registro de interceptores
 src/main/resources/
-├── schema.sql        # DDL for H2 dev (auto-applied by Spring)
-├── data.sql          # Seed data for H2 dev (events, bars, products, categories)
+├── schema.sql        # DDL para H2 dev (aplicado automáticamente por Spring)
+├── data.sql          # Datos seed para H2 dev (eventos, barras, productos, categorías)
 └── application*.properties
 deploy/
-├── postgres-init.sql # Full schema + seed for a fresh Neon provision
-├── reset-total.sql   # Wipe orders, restore stock, re-anchor event dates (pre-demo)
-├── migrate-2026-06-23.sql  # Add item_count column
-└── migrate-2026-06-24.sql  # Add admin_users table
+├── postgres-init.sql # Schema completo + seed para una provisión nueva de Neon
+├── reset-total.sql   # Limpia pedidos, restaura stock, re-ancla fechas de eventos (pre-demo)
+├── migrate-2026-06-23.sql  # Agrega columna item_count
+└── migrate-2026-06-24.sql  # Agrega tabla admin_users
 ```
 
 ---
 
-## Running locally
+## Ejecución local
 
 ```bash
 ./mvnw spring-boot:run
 ```
 
-The backend binds to `:8080`. H2 schema and seed data are applied automatically on every boot (`schema.sql` + `data.sql`). No database setup needed for local dev.
+El backend se enlaza en `:8080`. El schema H2 y los datos seed se aplican automáticamente al iniciar (`schema.sql` + `data.sql`). No se necesita configuración de base de datos para el desarrollo local.
 
-To run alongside the frontend with ngrok (required for Mercado Pago redirects), use the launcher script from the frontend repo:
+Para correr junto con el frontend y ngrok (necesario para las redirecciones de Mercado Pago), usar el script de inicio del repo del frontend:
 
 ```powershell
 .\start-fastbuy.ps1
@@ -76,79 +76,79 @@ To run alongside the frontend with ngrok (required for Mercado Pago redirects), 
 
 ---
 
-## API reference
+## Referencia de API
 
-### Auth
+### Autenticación
 
-| Method | Path | Description |
+| Método | Ruta | Descripción |
 |--------|------|-------------|
-| POST | `/auth/bartender/login` | Returns bartender session token + bar info |
-| POST | `/auth/admin/login` | Returns admin session token + event info |
+| POST | `/auth/bartender/login` | Devuelve token de sesión de bartender + info de barra |
+| POST | `/auth/admin/login` | Devuelve token de sesión de admin + info de evento |
 
-Request body for both: `{ "username": "...", "password": "..." }`
+Body para ambos: `{ "username": "...", "password": "..." }`
 
-### Events
+### Eventos
 
-| Method | Path | Description |
+| Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/events` | All events ending > 6 h ago, sorted by start date |
-| GET | `/events/:id/menu` | Products served at any bar for this event |
-| GET | `/events/:id/bars` | Bars belonging to this event |
-| GET | `/events/:id/payment-account` | Current seller token config (open) |
-| POST | `/events/:id/payment-account` | Set seller token (admin auth required) |
-| DELETE | `/events/:id/payment-account` | Remove seller token (admin auth required) |
+| GET | `/events` | Todos los eventos que terminaron hace menos de 6 h, ordenados por fecha |
+| GET | `/events/:id/menu` | Productos disponibles en cualquier barra de este evento |
+| GET | `/events/:id/bars` | Barras pertenecientes a este evento |
+| GET | `/events/:id/payment-account` | Config actual del token de vendedor (abierto) |
+| POST | `/events/:id/payment-account` | Establecer token de vendedor (requiere auth de admin) |
+| DELETE | `/events/:id/payment-account` | Eliminar token de vendedor (requiere auth de admin) |
 
-### Orders
+### Pedidos
 
-| Method | Path | Description |
+| Método | Ruta | Descripción |
 |--------|------|-------------|
-| POST | `/orders` | Create order; auto-assigns least-loaded bar |
-| GET | `/orders?bar=:barId` | Active orders for a bar (QUEUE + PREPARING + READY) |
-| GET | `/orders?bar=:barId&status=delivered` | Delivered orders for a bar |
-| GET | `/orders/:id` | Single order with `queuePosition` + `etaMinutes` |
-| POST | `/orders/:id/advance` | Step: QUEUE → PREPARING → READY (bartender auth) |
-| POST | `/orders/:id/deliver` | Mark READY → DELIVERED (bartender auth) |
-| POST | `/orders/:id/cancel` | Cancel order (no-show) (bartender auth) |
-| POST | `/orders/:id/release` | Release PREPARING → QUEUE (bartender auth) |
+| POST | `/orders` | Crear pedido; asigna automáticamente la barra menos cargada |
+| GET | `/orders?bar=:barId` | Pedidos activos de una barra (QUEUE + PREPARING + READY) |
+| GET | `/orders?bar=:barId&status=delivered` | Pedidos entregados de una barra |
+| GET | `/orders/:id` | Pedido individual con `queuePosition` + `etaMinutes` |
+| POST | `/orders/:id/advance` | Avanzar estado: QUEUE → PREPARING → READY (auth bartender) |
+| POST | `/orders/:id/deliver` | Marcar READY → DELIVERED (auth bartender) |
+| POST | `/orders/:id/cancel` | Cancelar pedido (no-show) (auth bartender) |
+| POST | `/orders/:id/release` | Liberar PREPARING → QUEUE (auth bartender) |
 
-### Payments
+### Pagos
 
-| Method | Path | Description |
+| Método | Ruta | Descripción |
 |--------|------|-------------|
-| POST | `/payments/preference` | Create Mercado Pago preference; returns `initPoint` |
+| POST | `/payments/preference` | Crear preferencia de Mercado Pago; devuelve `initPoint` |
 
-### Catalog
+### Catálogo
 
-| Method | Path | Description |
+| Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/bars` | All bars |
-| GET | `/products` | All products (union across all bars) |
-| GET | `/categories` | All categories |
+| GET | `/bars` | Todas las barras |
+| GET | `/products` | Todos los productos (unión entre todas las barras) |
+| GET | `/categories` | Todas las categorías |
 
 ---
 
-## Authentication
+## Autenticación
 
-### Bartender auth
-`POST /auth/bartender/login` returns `{ username, barId, barLabel, eventId, eventName, token }`.
-Store the token in `fb_bartender_session.token` and send it as `Authorization: Bearer <token>` on order write endpoints. The `BartenderAuthInterceptor` validates it against `bartender_users.session_token`.
+### Auth de bartender
+`POST /auth/bartender/login` devuelve `{ username, barId, barLabel, eventId, eventName, token }`.
+Guardar el token en `fb_bartender_session.token` y enviarlo como `Authorization: Bearer <token>` en los endpoints de escritura de pedidos. El `BartenderAuthInterceptor` lo valida contra `bartender_users.session_token`.
 
-### Admin auth
-`POST /auth/admin/login` returns `{ username, eventId, eventName, token }`.
-Store the token in `fb_admin_session.token` and send it as `Authorization: Bearer <token>` on `POST`/`DELETE /events/:id/payment-account`. The `AdminAuthInterceptor` validates it against `admin_users.session_token`. Admin credentials are scoped to one event — they cannot access another event's payment config.
+### Auth de admin
+`POST /auth/admin/login` devuelve `{ username, eventId, eventName, token }`.
+Guardar el token en `fb_admin_session.token` y enviarlo como `Authorization: Bearer <token>` en `POST`/`DELETE /events/:id/payment-account`. El `AdminAuthInterceptor` lo valida contra `admin_users.session_token`. Las credenciales de admin están limitadas a un evento — no pueden acceder a la config de pago de otro evento.
 
-**Cross-role login is prevented by design:** bartender credentials only work at `/auth/bartender/login` and admin credentials only work at `/auth/admin/login` (separate tables, separate endpoints).
+**El login entre roles está bloqueado por diseño:** las credenciales de bartender solo funcionan en `/auth/bartender/login` y las de admin solo en `/auth/admin/login` (tablas y endpoints separados).
 
 ---
 
-## Dev credentials
+## Credenciales de desarrollo
 
-These are seeded by `DataInitializer` on every fresh H2 boot. BCrypt hashes are computed at startup.
+Estas son generadas por `DataInitializer` en cada arranque fresco de H2. Los hashes BCrypt se calculan al iniciar.
 
 ### Bartenders
 
-| Username | Password | Bar | Event |
-|----------|----------|-----|-------|
+| Usuario | Contraseña | Barra | Evento |
+|---------|-----------|-------|--------|
 | `eclipse-north` | `norte123` | Barra Norte | Festival Eclipse (e1) |
 | `eclipse-center` | `centro123` | Barra Central | Festival Eclipse (e1) |
 | `eclipse-south` | `sur123` | Barra Sur VIP | Festival Eclipse (e1) |
@@ -157,8 +157,8 @@ These are seeded by `DataInitializer` on every fresh H2 boot. BCrypt hashes are 
 
 ### Admins (Organizadores)
 
-| Username | Password | Event |
-|----------|----------|-------|
+| Usuario | Contraseña | Evento |
+|---------|-----------|--------|
 | `admin-eclipse` | `eclipse2025` | Festival Eclipse (e1) |
 | `admin-cumbia` | `cumbia2025` | Festival Cumbiero (e2) |
 | `admin-cosquin` | `cosquin2025` | Cosquín Rock (e3) |
@@ -166,53 +166,53 @@ These are seeded by `DataInitializer` on every fresh H2 boot. BCrypt hashes are 
 
 ---
 
-## Order lifecycle
+## Ciclo de vida de un pedido
 
 ```
 QUEUE → PREPARING → READY → DELIVERED
-                 ↑
-         QUEUE ← (release)
+              ↑
+      QUEUE ← (release)
 
-Any state → CANCELLED (no-show)
+Cualquier estado → CANCELLED (no-show)
 ```
 
-Bar assignment happens at `POST /orders` time: the server picks the bar with the fewest in-flight item-quantity (QUEUE + PREPARING orders) that stocks every requested product. The client never chooses a bar.
+La asignación de barra ocurre al momento del `POST /orders`: el servidor elige la barra con menor cantidad de ítems en vuelo (pedidos en QUEUE + PREPARING) que tenga stock de todos los productos solicitados. El cliente nunca elige la barra.
 
-Queue position and ETA are returned on `GET /orders/:id`:
-- `queuePosition` — count of QUEUE + PREPARING + READY orders ahead with a smaller ID (+ 1)
-- `etaMinutes` — `ceil((itemsAhead + thisOrderItems) × 90s / 60)`, floored at 1 min
+La posición en cola y el ETA se devuelven en `GET /orders/:id`:
+- `queuePosition` — cantidad de pedidos en QUEUE + PREPARING + READY con ID menor (+ 1)
+- `etaMinutes` — `ceil((ítemsAdelante + ítemsDeEstePedido) × 90s / 60)`, mínimo 1 min
 
 ---
 
-## Database
+## Base de datos
 
 ### Dev (H2)
-Schema applied from `schema.sql`; seed data from `data.sql`. Tables and data reset on every restart. `DataInitializer` seeds bartender and admin users (BCrypt) after `ApplicationReadyEvent`.
+Schema aplicado desde `schema.sql`; datos seed desde `data.sql`. Las tablas y datos se resetean en cada reinicio. `DataInitializer` genera los usuarios de bartender y admin (BCrypt) después del `ApplicationReadyEvent`.
 
 ### Prod (Neon Postgres)
-`spring.jpa.hibernate.ddl-auto=none` — schema changes must be applied manually.
+`spring.jpa.hibernate.ddl-auto=none` — los cambios de schema deben aplicarse manualmente.
 
-**Fresh provision:** run `deploy/postgres-init.sql` in the Neon SQL editor once. `DataInitializer` seeds users on first boot.
+**Provisión nueva:** ejecutar `deploy/postgres-init.sql` en el editor SQL de Neon una sola vez. `DataInitializer` genera los usuarios al primer arranque.
 
-**Incremental migrations:**
-| File | What it adds |
-|------|-------------|
-| `migrate-2026-06-23.sql` | `item_count` column on `orders` |
-| `migrate-2026-06-24.sql` | `admin_users` table |
+**Migraciones incrementales:**
+| Archivo | Qué agrega |
+|---------|-----------|
+| `migrate-2026-06-23.sql` | Columna `item_count` en `orders` |
+| `migrate-2026-06-24.sql` | Tabla `admin_users` |
 
-**Pre-demo reset:** run `deploy/reset-total.sql` to wipe orders, restore product stock, and re-anchor event dates relative to `NOW()`.
+**Reset pre-demo:** ejecutar `deploy/reset-total.sql` para limpiar pedidos, restaurar el stock de productos y re-anclar las fechas de los eventos relativas a `NOW()`.
 
 ---
 
-## Environment variables (production)
+## Variables de entorno (producción)
 
-| Variable | Description |
+| Variable | Descripción |
 |----------|-------------|
-| `SPRING_DATASOURCE_URL` | Neon Postgres JDBC URL |
-| `SPRING_DATASOURCE_PASSWORD` | Neon DB password |
-| `MP_ACCESS_TOKEN` | Mercado Pago platform access token |
-| `FASTBUY_TOKEN_KEY` | AES key for encrypting stored seller tokens |
-| `FASTBUY_TOKEN_SALT` | Salt for the AES key derivation |
-| `FASTBUY_CORS_ORIGINS` | Comma-separated allowed browser origins (e.g. `https://fastbuy.pages.dev`) |
+| `SPRING_DATASOURCE_URL` | URL JDBC de Neon Postgres |
+| `SPRING_DATASOURCE_PASSWORD` | Contraseña de la BD Neon |
+| `MP_ACCESS_TOKEN` | Token de acceso de la plataforma Mercado Pago |
+| `FASTBUY_TOKEN_KEY` | Clave AES para encriptar tokens de vendedor almacenados |
+| `FASTBUY_TOKEN_SALT` | Salt para la derivación de la clave AES |
+| `FASTBUY_CORS_ORIGINS` | Orígenes de navegador permitidos separados por coma (ej. `https://fastbuy.pages.dev`) |
 
-Dev defaults for `FASTBUY_TOKEN_KEY`/`FASTBUY_TOKEN_SALT` are intentionally insecure and must be overridden in production. Never commit the Mercado Pago access token or DB password.
+Los valores por defecto de `FASTBUY_TOKEN_KEY`/`FASTBUY_TOKEN_SALT` para dev son intencionalmente inseguros y deben sobreescribirse en producción. Nunca commitear el token de acceso de Mercado Pago ni la contraseña de la BD.
